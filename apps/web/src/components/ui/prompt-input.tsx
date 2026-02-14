@@ -2,7 +2,9 @@
 
 import React, {
 	createContext,
+	forwardRef,
 	useContext,
+	useImperativeHandle,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -51,59 +53,74 @@ export type PromptInputProps = {
 	disabled?: boolean;
 } & React.ComponentProps<"div">;
 
-function PromptInput({
-	className,
-	isLoading = false,
-	maxHeight = 240,
-	value,
-	onValueChange,
-	onSubmit,
-	children,
-	disabled = false,
-	onClick,
-	...props
-}: PromptInputProps) {
-	const [internalValue, setInternalValue] = useState(value || "");
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
+export type PromptInputRef = {
+	focus: () => void;
+};
 
-	const handleChange = (newValue: string) => {
-		setInternalValue(newValue);
-		onValueChange?.(newValue);
-	};
+const PromptInput = forwardRef<PromptInputRef, PromptInputProps>(
+	(
+		{
+			className,
+			isLoading = false,
+			maxHeight = 240,
+			value,
+			onValueChange,
+			onSubmit,
+			children,
+			disabled = false,
+			onClick,
+			...props
+		},
+		ref,
+	) => {
+		const [internalValue, setInternalValue] = useState(value || "");
+		const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-	const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
-		if (!disabled) textareaRef.current?.focus();
-		onClick?.(e);
-	};
+		useImperativeHandle(ref, () => ({
+			focus: () => {
+				textareaRef.current?.focus();
+			},
+		}));
 
-	return (
-		<TooltipProvider>
-			<PromptInputContext.Provider
-				value={{
-					isLoading,
-					value: value ?? internalValue,
-					setValue: onValueChange ?? handleChange,
-					maxHeight,
-					onSubmit,
-					disabled,
-					textareaRef,
-				}}
-			>
-				<div
-					onClick={handleClick}
-					className={cn(
-						"cursor-text rounded-3xl border border-input bg-background p-2 shadow-xs",
-						disabled && "cursor-not-allowed opacity-60",
-						className,
-					)}
-					{...props}
+		const handleChange = (newValue: string) => {
+			setInternalValue(newValue);
+			onValueChange?.(newValue);
+		};
+
+		const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+			if (!disabled) textareaRef.current?.focus();
+			onClick?.(e);
+		};
+
+		return (
+			<TooltipProvider>
+				<PromptInputContext.Provider
+					value={{
+						isLoading,
+						value: value ?? internalValue,
+						setValue: onValueChange ?? handleChange,
+						maxHeight,
+						onSubmit,
+						disabled,
+						textareaRef,
+					}}
 				>
-					{children}
-				</div>
-			</PromptInputContext.Provider>
-		</TooltipProvider>
-	);
-}
+					<div
+						onClick={handleClick}
+						className={cn(
+							"origin-center transform-gpu cursor-text rounded-3xl border border-input bg-background p-2 shadow-xs transition-all duration-200 ease-out focus-within:scale-[1.02] focus-within:border-accent-foreground/50",
+							disabled && "cursor-not-allowed opacity-60",
+							className,
+						)}
+						{...props}
+					>
+						{children}
+					</div>
+				</PromptInputContext.Provider>
+			</TooltipProvider>
+		);
+	},
+);
 
 export type PromptInputTextareaProps = {
 	disableAutosize?: boolean;
@@ -225,9 +242,10 @@ function PromptInputAction({
 	);
 }
 
+PromptInput.displayName = "PromptInput";
 export {
 	PromptInput,
-	PromptInputTextarea,
-	PromptInputActions,
 	PromptInputAction,
+	PromptInputActions,
+	PromptInputTextarea,
 };

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "../index.css";
+import { Analytics } from "@vercel/analytics/next";
 import Providers from "@/components/providers";
 
 const geistSans = Geist({
@@ -30,6 +31,7 @@ export default function RootLayout({
 				className={`${geistSans.variable} ${geistMono.variable} bg-primary-foreground antialiased`}
 			>
 				<Providers>{children}</Providers>
+				<Analytics />
 			</body>
 		</html>
 	);

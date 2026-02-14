@@ -1,3 +1,4 @@
+import { useTheme } from "next-themes";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
@@ -12,7 +13,7 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
 	return (
 		<div
 			className={cn(
-				"not-prose flex w-full flex-col overflow-clip border",
+				"not-prose flex w-full flex-col overflow-x-scroll border",
 				"rounded-xl border-border bg-card text-card-foreground",
 				className,
 			)}
@@ -38,6 +39,7 @@ function CodeBlockCode({
 	...props
 }: CodeBlockCodeProps) {
 	const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+	const { resolvedTheme } = useTheme();
 
 	useEffect(() => {
 		async function highlight() {
@@ -46,11 +48,14 @@ function CodeBlockCode({
 				return;
 			}
 
-			const html = await codeToHtml(code, { lang: language, theme });
+			const html = await codeToHtml(code, {
+				lang: language,
+				theme: resolvedTheme === "light" ? "min-light" : "monokai",
+			});
 			setHighlightedHtml(html);
 		}
 		highlight();
-	}, [code, language, theme]);
+	}, [code, language, resolvedTheme]);
 
 	const classNames = cn(
 		"w-full overflow-x-auto text-[13px] [&>pre]:px-4 [&>pre]:py-4",

@@ -61,8 +61,8 @@ function PromptSuggestion({
 			variant={variant || "ghost"}
 			size={size || "sm"}
 			className={cn(
-				"w-full cursor-pointer justify-start gap-0 rounded-xl p-2!",
-				"hover:bg-accent",
+				"h-fit w-full cursor-pointer justify-start gap-0 rounded-xl p-2!",
+				"hover:bg-accent/70",
 				className,
 			)}
 			{...props}

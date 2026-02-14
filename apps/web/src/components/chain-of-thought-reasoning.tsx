@@ -1,10 +1,4 @@
-import {
-	Lightbulb,
-	MessageSquareQuote,
-	Pencil,
-	Search,
-	Target,
-} from "lucide-react";
+import { MessageSquareQuote, Pencil, Search, Target } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import {
@@ -63,27 +57,27 @@ function formatPlan(plan: WritingAgentState["plan"]): React.ReactNode {
 	return (
 		<div className="space-y-2 text-sm">
 			<div>
-				<strong>Intent:</strong> {plan.intent}
+				<strong>Intent:</strong> {plan?.intent}
 			</div>
 			<div>
-				<strong>Requirements:</strong> {plan.requirements}
+				<strong>Requirements:</strong> {plan?.requirements}
 			</div>
 			<div>
-				<strong>Outline:</strong> {plan.outline}
+				<strong>Outline:</strong> {plan?.outline}
 			</div>
 			<div>
-				<strong>Tone:</strong> {plan.tone}
+				<strong>Tone:</strong> {plan?.tone}
 			</div>
-			{plan.constraints && (
+			{plan?.constraints && (
 				<div>
-					<strong>Constraints:</strong> {plan.constraints}
+					<strong>Constraints:</strong> {plan?.constraints}
 				</div>
 			)}
-			{plan.optional_search_queries &&
-				plan.optional_search_queries.length > 0 && (
+			{plan?.optional_search_queries &&
+				plan?.optional_search_queries?.length > 0 && (
 					<div>
 						<strong>Search Queries:</strong>{" "}
-						{plan.optional_search_queries.join(", ")}
+						{plan?.optional_search_queries?.join(", ")}
 					</div>
 				)}
 		</div>
@@ -94,51 +88,51 @@ function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 	if (!review) return null;
 	return (
 		<div className="space-y-2 text-sm">
-			{review.issues.length > 0 && (
+			{review?.issues?.length > 0 && (
 				<div>
 					<strong>Issues:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review.issues.map((issue, i) => (
+						{review?.issues?.map((issue, i) => (
 							<li key={i}>{issue}</li>
 						))}
 					</ul>
 				</div>
 			)}
-			{review.missing_elements.length > 0 && (
+			{review?.missing_elements?.length > 0 && (
 				<div>
 					<strong>Missing Elements:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review.missing_elements.map((elem, i) => (
+						{review?.missing_elements?.map((elem, i) => (
 							<li key={i}>{elem}</li>
 						))}
 					</ul>
 				</div>
 			)}
-			{review.tone_mismatches.length > 0 && (
+			{review?.tone_mismatches?.length > 0 && (
 				<div>
 					<strong>Tone Mismatches:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review.tone_mismatches.map((mismatch, i) => (
+						{review?.tone_mismatches?.map((mismatch, i) => (
 							<li key={i}>{mismatch}</li>
 						))}
 					</ul>
 				</div>
 			)}
-			{review.structural_problems.length > 0 && (
+			{review?.structural_problems?.length > 0 && (
 				<div>
 					<strong>Structural Problems:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review.structural_problems.map((problem, i) => (
+						{review?.structural_problems?.map((problem, i) => (
 							<li key={i}>{problem}</li>
 						))}
 					</ul>
 				</div>
 			)}
-			{review.suggested_improvements.length > 0 && (
+			{review?.suggested_improvements?.length > 0 && (
 				<div>
 					<strong>Suggested Improvements:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review.suggested_improvements.map((improvement, i) => (
+						{review?.suggested_improvements?.map((improvement, i) => (
 							<li key={i}>{improvement}</li>
 						))}
 					</ul>
@@ -170,7 +164,7 @@ export function ChainOfThoughtReasoning({
 	useEffect(() => {
 		if (!animated || !isLoading) {
 			// If not animated or not loading, show all steps immediately
-			const maxSteps = Math.max(stepTitles.length, itemsToUse.length || 0);
+			const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
 			setVisibleSteps(Array.from({ length: maxSteps }, (_, i) => i));
 			return;
 		}
@@ -178,7 +172,7 @@ export function ChainOfThoughtReasoning({
 		setVisibleSteps([]);
 
 		const timeouts: NodeJS.Timeout[] = [];
-		const maxSteps = Math.max(stepTitles.length, itemsToUse.length || 0);
+		const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
 
 		for (let index = 0; index < maxSteps; index++) {
 			const timeout = setTimeout(() => {
@@ -190,20 +184,20 @@ export function ChainOfThoughtReasoning({
 		return () => {
 			timeouts.forEach(clearTimeout);
 		};
-	}, [isLoading, itemsToUse.length, animated]);
+	}, [isLoading, itemsToUse?.length, animated]);
 
-	const maxSteps = Math.max(stepTitles.length, itemsToUse.length || 0);
+	const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
 
 	return (
 		<div className="w-full max-w-3xl">
 			<ChainOfThought>
 				{animated ? (
 					<AnimatePresence>
-						{Array.from({ length: maxSteps }).map((_, index) => {
+						{Array.from({ length: maxSteps })?.map((_, index) => {
 							if (!visibleSteps.includes(index)) return null;
 
 							const items = itemsToUse[index] || [];
-							const hasItems = items.length > 0;
+							const hasItems = items?.length > 0;
 							const title = stepTitles[index] || "Generating Final Response...";
 							const icon = stepIcons[index] || <Target className="size-4" />;
 
@@ -221,7 +215,7 @@ export function ChainOfThoughtReasoning({
 										</ChainOfThoughtTrigger>
 										{hasItems ? (
 											<ChainOfThoughtContent>
-												{items.map((item, itemIndex) => (
+												{items?.map((item, itemIndex) => (
 													<ChainOfThoughtItem key={itemIndex}>
 														{item}
 													</ChainOfThoughtItem>
@@ -230,7 +224,7 @@ export function ChainOfThoughtReasoning({
 										) : (
 											<ChainOfThoughtContent>
 												<ChainOfThoughtItem>
-													Generating Final Response...
+													Generating Please hold on...
 												</ChainOfThoughtItem>
 											</ChainOfThoughtContent>
 										)}
@@ -241,9 +235,9 @@ export function ChainOfThoughtReasoning({
 					</AnimatePresence>
 				) : (
 					<>
-						{Array.from({ length: maxSteps }).map((_, index) => {
+						{Array.from({ length: maxSteps })?.map((_, index) => {
 							const items = itemsToUse[index] || [];
-							const hasItems = items.length > 0;
+							const hasItems = items?.length > 0;
 							const title = stepTitles[index] || "Generating Final Response...";
 							const icon = stepIcons[index] || <Target className="size-4" />;
 
@@ -256,7 +250,7 @@ export function ChainOfThoughtReasoning({
 										{title}
 									</ChainOfThoughtTrigger>
 									<ChainOfThoughtContent>
-										{items.map((item, itemIndex) => (
+										{items?.map((item, itemIndex) => (
 											<ChainOfThoughtItem key={itemIndex}>
 												{item}
 											</ChainOfThoughtItem>

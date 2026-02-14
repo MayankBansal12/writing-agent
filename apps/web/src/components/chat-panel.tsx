@@ -2,9 +2,10 @@
 
 import { ArrowUp, CheckLine, Copy, Square } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { promptSuggestions } from "@/lib/constants/suggestions";
 import { cn } from "@/lib/utils";
 import { ChainOfThoughtReasoning } from "./chain-of-thought-reasoning";
 import {
@@ -17,6 +18,7 @@ import {
 	PromptInput,
 	PromptInputAction,
 	PromptInputActions,
+	type PromptInputRef,
 	PromptInputTextarea,
 } from "./ui/prompt-input";
 import { PromptSuggestion } from "./ui/prompt-suggestion";
@@ -51,13 +53,6 @@ interface Message {
 	stateData?: WritingAgentState;
 }
 
-// const assistantMessage1: Message = {
-// 	id: (Date.now() + 1).toString(),
-// 	content: `Here's your final document generated`,
-// 	role: "assistant",
-// 	format: "plain"
-// }
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export function ChatPanel({
@@ -69,12 +64,13 @@ export function ChatPanel({
 	const [inputValue, setInputValue] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<string | null>(null);
+	const promptInputRef = useRef<PromptInputRef>(null);
 
-	const handleCopy = (content: string) => {
+	const handleCopy = (content: string, messageId: string) => {
 		navigator.clipboard.writeText(content);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+		setCopied(messageId);
+		setTimeout(() => setCopied(null), 2000);
 	};
 
 	const handleSend = async () => {
@@ -124,7 +120,7 @@ export function ChatPanel({
 			};
 			setMessages((prev) => [...prev, assistantMessage]);
 		} catch (err) {
-			const errorMessage = err instanceof Error ? err?.message : "";
+			const errorMessage = err instanceof Error ? err?.message : "Error!";
 			setError(errorMessage);
 		} finally {
 			setIsLoading(false);
@@ -140,7 +136,7 @@ export function ChatPanel({
 				<div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4">
 					{messages.length > 0 ? (
 						<AnimatePresence mode="popLayout">
-							{messages.map((message) => (
+							{messages?.map((message) => (
 								<div
 									key={message.id}
 									className={cn(
@@ -162,11 +158,13 @@ export function ChatPanel({
 										exit={{ opacity: 0, y: -10 }}
 										transition={{ duration: 0.3, ease: "easeOut" }}
 										className={cn(
-											"group flex w-full",
-											message.role === "user" ? "justify-end" : "justify-start",
+											"group flex w-full flex-col gap-2",
+											message.role === "user" ? "items-end" : "items-start",
 										)}
 									>
-										<Message>
+										<Message
+											className={message.role === "assistant" ? "w-full" : ""}
+										>
 											<MessageContent
 												markdown
 												className={cn(
@@ -177,21 +175,35 @@ export function ChatPanel({
 											>
 												{message.content}
 											</MessageContent>
-											<MessageActions className="self-end">
-												<MessageAction tooltip="Copy to clipboard">
+										</Message>
+										<MessageActions>
+											<MessageAction tooltip="Copy to clipboard">
+												<Button
+													variant="ghost"
+													size="icon"
+													className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100"
+													onClick={() =>
+														handleCopy(message.content, message.id)
+													}
+												>
+													<Copy
+														className={`size-4 ${copied === message.id ? "text-green-500" : ""}`}
+													/>
+												</Button>
+											</MessageAction>
+											{message.role === "assistant" && (
+												<MessageAction tooltip="Apply changes to document">
 													<Button
 														variant="ghost"
 														size="icon"
-														className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100"
-														onClick={() => handleCopy(message.content)}
+														className="w-fit px-2 opacity-0 group-hover:opacity-100"
+														onClick={() => changeDocument(message.content)}
 													>
-														<Copy
-															className={`size-4 ${copied ? "text-green-500" : ""}`}
-														/>
+														<CheckLine className="size-4" /> Apply Changes
 													</Button>
 												</MessageAction>
-											</MessageActions>
-										</Message>
+											)}
+										</MessageActions>
 									</motion.div>
 								</div>
 							))}
@@ -210,95 +222,39 @@ export function ChatPanel({
 								</p>
 							</div>
 							<div className="flex w-[90%] min-w-sm flex-wrap items-center gap-2">
-								<PromptSuggestion
-									size="lg"
-									highlight="true"
-									onClick={() =>
-										setInputValue("Generate a short blog on a random topic")
-									}
-								>
-									Generate a short blog on a random topic
-								</PromptSuggestion>
-
-								<PromptSuggestion
-									size="lg"
-									highlight="true"
-									onClick={() =>
-										setInputValue(
-											"Create an outline for a research paper on LLM tokenization",
-										)
-									}
-								>
-									Create an outline for a research paper on LLM tokenization
-								</PromptSuggestion>
-
-								<PromptSuggestion
-									size="lg"
-									highlight="true"
-									onClick={() =>
-										setInputValue(
-											"In 150 words, write an introduction explaining why context matters for AI agents.",
-										)
-									}
-								>
-									In 150 words, write an introduction explaining why context
-									matters for AI agents.
-								</PromptSuggestion>
-
-								<PromptSuggestion
-									size="lg"
-									highlight="true"
-									onClick={() =>
-										setInputValue("Write a blog on how React works")
-									}
-								>
-									Write a blog on how React works
-								</PromptSuggestion>
-
-								<PromptSuggestion
-									size="lg"
-									highlight="true"
-									onClick={() =>
-										setInputValue(
-											'Defend name "Wavmo" is not taken from Waymo in <200 words',
-										)
-									}
-								>
-									Defend name "Wavmo" is not taken from Waymo in &lt;200 words
-								</PromptSuggestion>
+								{promptSuggestions?.map((suggestion) => (
+									<PromptSuggestion
+										key={suggestion.slice(0, 10)}
+										size="lg"
+										highlight="true"
+										onClick={() => {
+											setInputValue(suggestion);
+											setTimeout(() => promptInputRef.current?.focus(), 0);
+										}}
+									>
+										{suggestion}
+									</PromptSuggestion>
+								))}
 							</div>
 						</div>
-					)}
-
-					{messages && messages[messages.length - 1]?.role === "assistant" && (
-						<Button
-							size="sm"
-							className="flex w-fit cursor-pointer gap-2 self-end"
-							onClick={() =>
-								changeDocument(messages[messages?.length - 1]?.content)
-							}
-						>
-							<CheckLine className="size-4" />
-							Apply Changes
-						</Button>
 					)}
 
 					{isLoading && <ChainOfThoughtReasoning isLoading={isLoading} />}
 					{error && (
 						<SystemMessage variant="error" fill>
-							{
-								"Unable to generate response, seems like a error from our side, please try agin!"
-							}
+							Unable to generate response, seems like a error from our side,
+							please try again.
 						</SystemMessage>
 					)}
 				</div>
 
 				<PromptInput
+					ref={promptInputRef}
 					value={inputValue}
 					onValueChange={(value) => setInputValue(value)}
 					isLoading={isLoading}
 					onSubmit={handleSend}
-					className="m-4 mx-auto w-[90%] min-w-sm"
+					className="m-4 mx-auto w-[85%] min-w-sm"
 				>
 					<PromptInputTextarea placeholder="Explain, Generate, review your documents..." />
 					<PromptInputActions className="justify-end pt-2">

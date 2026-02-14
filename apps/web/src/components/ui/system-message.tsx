@@ -106,7 +106,7 @@ export function SystemMessage({
 		>
 			<div className="flex flex-1 flex-row items-center gap-3 leading-normal">
 				{shouldShowIcon && (
-					<div className="flex h-[1lh] shrink-0 items-center justify-center self-start">
+					<div className="flex h-lh shrink-0 items-center justify-center self-start">
 						{getIconToShow()}
 					</div>
 				)}

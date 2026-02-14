@@ -35,6 +35,12 @@ export function createImprovementPrompt(
 		- Produce the final polished version
 		- Output valid JSON only
 
+		Writing INSTRUCTIONS:
+		- Don't use emdashes or emojies
+		- No meta commentary or explanations
+		- Avoid generic framing
+		- No buzzword clustering
+
 		JSON SCHEMA: {
 			"final_document": "string - the complete polished MDX document"
 		}
