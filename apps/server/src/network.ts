@@ -28,7 +28,7 @@ const planningAgent = createAgent<WritingAgentState>({
 	name: "Planning Agent",
 	system: createPlanningPrompt(),
 	model: openai({
-		model: "openai/gpt-oss-safeguard-20b",
+		model: process.env.GROQ_MODEL_PLANNING || "openai/gpt-oss-safeguard-20b",
 		...groqConfig,
 	}),
 });
@@ -41,7 +41,7 @@ const writerAgent = createAgent<WritingAgentState>({
 		return createWritingPrompt(state.plan);
 	},
 	model: openai({
-		model: "groq/compound",
+		model: process.env.GROQ_MODEL_WRITER || "groq/compound",
 		...groqConfig,
 	}),
 	lifecycle: {
@@ -69,7 +69,7 @@ const reviewAgent = createAgent<WritingAgentState>({
 		return createReviewPrompt(state.plan, state.draft);
 	},
 	model: openai({
-		model: "openai/gpt-oss-20b",
+		model: process.env.GROQ_MODEL_REVIEW || "openai/gpt-oss-20b",
 		...groqConfig,
 	}),
 	lifecycle: {
@@ -99,7 +99,7 @@ const improvementAgent = createAgent<WritingAgentState>({
 		return createImprovementPrompt(state.draft, state.review);
 	},
 	model: openai({
-		model: "moonshotai/kimi-k2-instruct-0905",
+		model: process.env.GROQ_MODEL_IMPROVEMENT || "qwen/qwen3-32b",
 		...groqConfig,
 	}),
 	lifecycle: {
@@ -173,7 +173,7 @@ export const writingNetwork = createNetwork<WritingAgentState>({
 	name: "Writing Agent Network",
 	agents,
 	defaultModel: openai({
-		model: "llama-3.3-70b-versatile",
+		model: process.env.GROQ_MODEL_DEFAULT || "llama-3.3-70b-versatile",
 		...groqConfig,
 	}),
 	maxIter: 10,
