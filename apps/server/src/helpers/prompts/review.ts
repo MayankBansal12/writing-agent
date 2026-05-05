@@ -15,6 +15,9 @@ export function createReviewPrompt(plan: WritingPlan, draft: string): string {
     INSTRUCTIONS:
     - Identify issues in clarity, structure, tone, completeness, and factual gaps
     - Check MDX formatting correctness and code, mermaid syntax (if there)
+    - Mermaid diagrams are ALLOWED and ENCOURAGED - prefer mermaid over ascii art
+    - If ascii diagrams exist, suggest converting to mermaid in suggested_improvements
+    - Do NOT flag properly formatted mermaid as issues
     - Do NOT rewrite the draft
     - Keep feedback concise and actionable
     - Pick out any sign of AI slopness like emdashes, emojies, unnecessary introduction, summary etc.

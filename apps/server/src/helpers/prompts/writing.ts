@@ -1,7 +1,7 @@
 import type { WritingPlan } from "../../types";
 
 export function createWritingPrompt(plan: WritingPlan): string {
-  return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.
+	return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.
     PLAN CONTEXT:
     - Intent: ${plan?.intent}
     - Requirements: ${plan?.requirements}
@@ -23,6 +23,7 @@ export function createWritingPrompt(plan: WritingPlan): string {
     - Avoid generic framing
     - No buzzword clustering
     - Favor people and actions over abstractions
+    - STRICT LIMIT: Maximum 1000 words
 
     - Allow human texture (optional - for story or engaging topics)
       Include at least one of the following where appropriate:

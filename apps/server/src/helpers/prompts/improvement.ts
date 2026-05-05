@@ -40,6 +40,7 @@ export function createImprovementPrompt(
 		- No meta commentary or explanations
 		- Avoid generic framing
 		- No buzzword clustering
+		- STRICT LIMIT: Maximum 1000 words
 
 		JSON SCHEMA: {
 			"final_document": "string - the complete polished MDX document"

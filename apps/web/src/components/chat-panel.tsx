@@ -109,13 +109,16 @@ export function ChatPanel({
 			const data = await response.json();
 			console.log("agent data: ", data);
 
-			if (!data || !data.success || !data.finalDocument) throw Error("");
+			if (!data) throw Error("No data received");
+
+			const contentToUse = data.finalDocument || data.state?.draft;
+			if (!contentToUse) throw Error("No content generated");
 
 			const assistantMessage: Message = {
 				id: (Date.now() + 1).toString(),
-				content: `${data.finalDocument}`,
+				content: `${contentToUse}`,
 				role: "assistant",
-				format: "mdx",
+				format: "plain",
 				stateData: data.state,
 			};
 			setMessages((prev) => [...prev, assistantMessage]);

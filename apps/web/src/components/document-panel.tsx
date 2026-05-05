@@ -27,7 +27,7 @@ export function DocumentPanel({
 	isChatOpen,
 	onToggleChat,
 }: DocumentPanelProps) {
-	const [format, setFormat] = useState<FormatType>("mdx");
+	const [format, setFormat] = useState<FormatType>("plain");
 	const [isEditingMarkdown, setIsEditingMarkdown] = useState(false);
 
 	return (
