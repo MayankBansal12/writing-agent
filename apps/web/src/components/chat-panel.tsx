@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, CheckLine, Copy, Square } from "lucide-react";
+import { ArrowUp, CheckLine, Copy, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ interface WritingAgentState {
 	finalDocument?: string;
 }
 
-interface Message {
+interface ChatMessage {
 	id: string;
 	content: string;
 	role: "user" | "assistant";
@@ -53,19 +53,90 @@ interface Message {
 	stateData?: WritingAgentState;
 }
 
+type DiffLine = {
+	type: "equal" | "add" | "remove";
+	text: string;
+	originalIndex?: number;
+	suggestedIndex?: number;
+};
+
+type DiffReview = {
+	original: string;
+	suggested: string;
+	diff: DiffLine[];
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export function ChatPanel({
 	changeDocument,
+	currentDocument,
 }: {
 	changeDocument: (content: string) => void;
+	currentDocument: string;
 }) {
-	const [messages, setMessages] = useState<Message[]>([]);
+	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [inputValue, setInputValue] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [copied, setCopied] = useState<string | null>(null);
+	const [diffReview, setDiffReview] = useState<DiffReview | null>(null);
 	const promptInputRef = useRef<PromptInputRef>(null);
+
+	const buildDiff = (original: string, suggested: string): DiffLine[] => {
+		const originalLines = original.split("\n");
+		const suggestedLines = suggested.split("\n");
+		const rows = originalLines.length;
+		const cols = suggestedLines.length;
+		const dp = Array.from({ length: rows + 1 }, () => Array(cols + 1).fill(0));
+
+		for (let i = rows - 1; i >= 0; i -= 1) {
+			for (let j = cols - 1; j >= 0; j -= 1) {
+				dp[i][j] =
+					originalLines[i] === suggestedLines[j]
+						? dp[i + 1][j + 1] + 1
+						: Math.max(dp[i + 1][j], dp[i][j + 1]);
+			}
+		}
+
+		const diff: DiffLine[] = [];
+		let i = 0;
+		let j = 0;
+
+		while (i < rows && j < cols) {
+			if (originalLines[i] === suggestedLines[j]) {
+				diff.push({
+					type: "equal",
+					text: originalLines[i],
+					originalIndex: i,
+					suggestedIndex: j,
+				});
+				i += 1;
+				j += 1;
+				continue;
+			}
+
+			if (dp[i + 1][j] >= dp[i][j + 1]) {
+				diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
+				i += 1;
+			} else {
+				diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
+				j += 1;
+			}
+		}
+
+		while (i < rows) {
+			diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
+			i += 1;
+		}
+
+		while (j < cols) {
+			diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
+			j += 1;
+		}
+
+		return diff;
+	};
 
 	const handleCopy = (content: string, messageId: string) => {
 		navigator.clipboard.writeText(content);
@@ -73,12 +144,26 @@ export function ChatPanel({
 		setTimeout(() => setCopied(null), 2000);
 	};
 
+	const openDiffReview = (content: string) => {
+		setDiffReview({
+			original: currentDocument,
+			suggested: content,
+			diff: buildDiff(currentDocument, content),
+		});
+	};
+
+	const handleApplyDiff = () => {
+		if (!diffReview) return;
+		changeDocument(diffReview.suggested);
+		setDiffReview(null);
+	};
+
 	const handleSend = async () => {
 		if (!inputValue.trim()) return;
 		setIsLoading(true);
 		setError(null);
 
-		const userMessage: Message = {
+		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
 			content: inputValue,
 			role: "user",
@@ -114,7 +199,7 @@ export function ChatPanel({
 			const contentToUse = data.finalDocument || data.state?.draft;
 			if (!contentToUse) throw Error("No content generated");
 
-			const assistantMessage: Message = {
+			const assistantMessage: ChatMessage = {
 				id: (Date.now() + 1).toString(),
 				content: `${contentToUse}`,
 				role: "assistant",
@@ -195,14 +280,14 @@ export function ChatPanel({
 												</Button>
 											</MessageAction>
 											{message.role === "assistant" && (
-												<MessageAction tooltip="Apply changes to document">
+												<MessageAction tooltip="Compare changes with the document">
 													<Button
 														variant="ghost"
 														size="icon"
 														className="w-fit px-2 opacity-0 group-hover:opacity-100"
-														onClick={() => changeDocument(message.content)}
+														onClick={() => openDiffReview(message.content)}
 													>
-														<CheckLine className="size-4" /> Apply Changes
+														<CheckLine className="size-4" /> Review Changes
 													</Button>
 												</MessageAction>
 											)}
@@ -279,6 +364,81 @@ export function ChatPanel({
 						</PromptInputAction>
 					</PromptInputActions>
 				</PromptInput>
+
+				{diffReview && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+						<div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+							<div className="flex items-start justify-between border-b border-border px-6 py-5">
+								<div>
+									<h3 className="font-semibold text-xl">Review AI Changes</h3>
+									<p className="mt-1 text-muted-foreground text-sm">
+										Nothing changes until you approve the suggestion.
+									</p>
+								</div>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => setDiffReview(null)}
+								>
+									<X className="size-4" />
+								</Button>
+							</div>
+
+							<div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+								<div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-muted/30">
+									<div className="sticky top-0 grid border-b border-border bg-card px-4 py-3 text-sm font-medium md:grid-cols-2">
+										<div>Original</div>
+										<div>Suggested Fix</div>
+									</div>
+									<div className="divide-y divide-border font-mono text-sm leading-6">
+										{diffReview.diff.map((line, index) => (
+											<div
+												key={`${line.originalIndex ?? "o"}-${line.suggestedIndex ?? "s"}-${index}`}
+												className="grid md:grid-cols-2"
+											>
+												<div
+													className={cn(
+														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														line.type === "remove"
+															? "bg-red-500/15 text-red-200 line-through"
+															: line.type === "equal"
+																? "text-foreground"
+																: "text-muted-foreground",
+													)}
+												>
+													{line.type === "add" ? "" : line.text || " "}
+												</div>
+												<div
+													className={cn(
+														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														line.type === "add"
+															? "bg-emerald-500/15 text-emerald-200"
+															: line.type === "equal"
+																? "text-foreground"
+																: "text-muted-foreground",
+													)}
+												>
+													{line.type === "remove" ? "" : line.text || " "}
+												</div>
+											</div>
+										))}
+									</div>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
+								<p className="text-muted-foreground text-sm">
+									Apply will replace the current document with the suggested
+									version.
+								</p>
+								<div className="flex items-center gap-2">
+									<Button variant="outline" onClick={() => setDiffReview(null)}>Cancel</Button>
+									<Button onClick={handleApplyDiff}>Accept Changes</Button>
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);
