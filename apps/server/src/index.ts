@@ -26,14 +26,17 @@ fastify.register(fastifyPlugin, {
 
 fastify.post("/api/chat", async (request, reply) => {
 	try {
-		const { userPrompt } = request.body as { userPrompt: string };
+		const { userPrompt, currentDocument } = request.body as {
+			userPrompt: string;
+			currentDocument?: string;
+		};
 		if (!userPrompt) {
 			return reply.status(400).send({
 				error: "userPrompt is required",
 			});
 		}
 
-		const agentResponse = await runWritingWorkflow(userPrompt);
+		const agentResponse = await runWritingWorkflow(userPrompt, currentDocument);
 		if (!agentResponse) {
 			return reply.status(500).send({
 				error: "",
@@ -54,8 +57,8 @@ fastify.get("/health", async () => {
 	return "Server is healthy!";
 });
 
-const host = ("RENDER" in process.env) ? `0.0.0.0` : `localhost`;
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8000;
+const host = "RENDER" in process.env ? "0.0.0.0" : "localhost";
+const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 8000;
 fastify.listen({ host, port: PORT }, (err, address) => {
 	if (err) {
 		fastify.log.error(err);

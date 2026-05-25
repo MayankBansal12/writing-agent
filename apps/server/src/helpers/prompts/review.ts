@@ -1,7 +1,15 @@
 import type { WritingPlan } from "../../types";
 
-export function createReviewPrompt(plan: WritingPlan, draft: string): string {
-	return `You are the Review Agent. Critically evaluate the draft based on the plan. Your task is to review the provided text and identify issues, especially signs of AI-generated or low-quality writing.
+export function createReviewPrompt(
+	plan: WritingPlan,
+	draft: string,
+	currentDocument?: string,
+): string {
+	const documentContext = currentDocument?.trim()
+		? `\nCURRENT DOCUMENT (for comparison):\n${currentDocument}\n`
+		: "";
+
+	return `You are the Review Agent. Critically evaluate the draft based on the plan. Your task is to review the provided text and identify issues, especially signs of AI-generated or low-quality writing.${documentContext}
     PLAN CONTEXT:
     - Intent: ${plan?.intent}
     - Requirements: ${plan?.requirements}

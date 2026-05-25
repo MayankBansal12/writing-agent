@@ -3,6 +3,7 @@ import type { WritingReview } from "../../types";
 export function createImprovementPrompt(
 	draft: string,
 	review: WritingReview,
+	currentDocument?: string,
 ): string {
 	const reviewSummary = [
 		review?.issues.length ? `Issues: ${review?.issues?.join("; ")}` : "",
@@ -22,8 +23,12 @@ export function createImprovementPrompt(
 		.filter(Boolean)
 		.join("\n");
 
+	const documentContext = currentDocument?.trim()
+		? `\n\nCURRENT DOCUMENT (for reference): ${currentDocument}`
+		: "";
+
 	return `You are the Improvement Agent. Generate an improved and polished version of the draft using the review notes.
-		DRAFT TO IMPROVE: ${draft}
+		DRAFT TO IMPROVE: ${draft}${documentContext}
 
 		REVIEW NOTES: ${reviewSummary}
 

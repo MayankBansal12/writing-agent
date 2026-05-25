@@ -26,6 +26,7 @@ import { SystemMessage } from "./ui/system-message";
 
 interface WritingAgentState {
 	userPrompt: string;
+	currentDocument?: string;
 	plan?: {
 		intent: string;
 		requirements: string;
@@ -33,6 +34,11 @@ interface WritingAgentState {
 		tone: string;
 		constraints: string;
 		optional_search_queries?: string[];
+		mode?: "write" | "edit" | "review";
+		steps?: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
 	};
 	draft?: string;
 	review?: {
@@ -43,6 +49,14 @@ interface WritingAgentState {
 		suggested_improvements: string[];
 	};
 	finalDocument?: string;
+	route?: {
+		mode: "write" | "edit" | "review";
+		steps: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
+	};
+	currentStepIndex?: number;
 }
 
 interface ChatMessage {
@@ -51,6 +65,7 @@ interface ChatMessage {
 	role: "user" | "assistant";
 	format?: "mdx" | "plain";
 	stateData?: WritingAgentState;
+	canReviewDiff?: boolean;
 }
 
 type DiffLine = {
@@ -144,6 +159,32 @@ export function ChatPanel({
 		setTimeout(() => setCopied(null), 2000);
 	};
 
+	const formatReviewAsMarkdown = (
+		review: WritingAgentState["review"],
+	): string => {
+		if (!review) return "No review feedback returned.";
+
+		const sections: { title: string; items?: string[] }[] = [
+			{ title: "Issues", items: review.issues },
+			{ title: "Missing Elements", items: review.missing_elements },
+			{ title: "Tone Mismatches", items: review.tone_mismatches },
+			{ title: "Structural Problems", items: review.structural_problems },
+			{ title: "Suggested Improvements", items: review.suggested_improvements },
+		];
+
+		const body = sections
+			.filter((section) => section.items && section.items.length > 0)
+			.map(
+				(section) =>
+					`### ${section.title}\n${section.items
+						?.map((item) => `- ${item}`)
+						.join("\n")}`,
+			)
+			.join("\n\n");
+
+		return `## Review Feedback\n\n${body || "No actionable issues found."}`;
+	};
+
 	const openDiffReview = (content: string) => {
 		setDiffReview({
 			original: currentDocument,
@@ -179,7 +220,10 @@ export function ChatPanel({
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ userPrompt: promptValue }),
+				body: JSON.stringify({
+					userPrompt: promptValue,
+					currentDocument,
+				}),
 			});
 
 			if (!response.ok) {
@@ -196,15 +240,28 @@ export function ChatPanel({
 
 			if (!data) throw Error("No data received");
 
-			const contentToUse = data.finalDocument || data.state?.draft;
-			if (!contentToUse) throw Error("No content generated");
+			const routeSteps = data.state?.route?.steps || [];
+			const isReviewOnly =
+				data.state?.route?.mode === "review" ||
+				(routeSteps.length === 1 && routeSteps[0] === "review");
+			const contentToUse =
+				data.finalDocument || data.state?.finalDocument || data.state?.draft;
+
+			const messageContent = isReviewOnly
+				? formatReviewAsMarkdown(data.state?.review)
+				: contentToUse;
+
+			if (!messageContent) throw Error("No content generated");
+
+			const canReviewDiff = !isReviewOnly;
 
 			const assistantMessage: ChatMessage = {
 				id: (Date.now() + 1).toString(),
-				content: `${contentToUse}`,
+				content: messageContent,
 				role: "assistant",
 				format: "plain",
 				stateData: data.state,
+				canReviewDiff,
 			};
 			setMessages((prev) => [...prev, assistantMessage]);
 		} catch (err) {
@@ -279,18 +336,19 @@ export function ChatPanel({
 													/>
 												</Button>
 											</MessageAction>
-											{message.role === "assistant" && (
-												<MessageAction tooltip="Compare changes with the document">
-													<Button
-														variant="ghost"
-														size="icon"
-														className="w-fit px-2 opacity-0 group-hover:opacity-100"
-														onClick={() => openDiffReview(message.content)}
-													>
-														<CheckLine className="size-4" /> Review Changes
-													</Button>
-												</MessageAction>
-											)}
+											{message.role === "assistant" &&
+												message.canReviewDiff && (
+													<MessageAction tooltip="Compare changes with the document">
+														<Button
+															variant="ghost"
+															size="icon"
+															className="w-fit px-2 opacity-0 group-hover:opacity-100"
+															onClick={() => openDiffReview(message.content)}
+														>
+															<CheckLine className="size-4" /> Review Changes
+														</Button>
+													</MessageAction>
+												)}
 										</MessageActions>
 									</motion.div>
 								</div>
@@ -432,7 +490,9 @@ export function ChatPanel({
 									version.
 								</p>
 								<div className="flex items-center gap-2">
-									<Button variant="outline" onClick={() => setDiffReview(null)}>Cancel</Button>
+									<Button variant="outline" onClick={() => setDiffReview(null)}>
+										Cancel
+									</Button>
 									<Button onClick={handleApplyDiff}>Accept Changes</Button>
 								</div>
 							</div>

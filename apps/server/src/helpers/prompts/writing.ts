@@ -1,7 +1,14 @@
 import type { WritingPlan } from "../../types";
 
-export function createWritingPrompt(plan: WritingPlan): string {
-	return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.
+export function createWritingPrompt(
+	plan: WritingPlan,
+	currentDocument?: string,
+): string {
+	const documentContext = currentDocument?.trim()
+		? `\n\nCURRENT DOCUMENT (for continuity if useful):\n${currentDocument}\n`
+		: "";
+
+	return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.${documentContext}
     PLAN CONTEXT:
     - Intent: ${plan?.intent}
     - Requirements: ${plan?.requirements}
