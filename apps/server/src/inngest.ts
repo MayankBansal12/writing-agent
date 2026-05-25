@@ -18,13 +18,14 @@ export const agentRunFunction = inngestClient.createFunction(
 		event,
 		step,
 	}: {
-		event: { data: { userPrompt: string } };
+		event: { data: { userPrompt: string; currentDocument?: string } };
 		step: any;
 	}) => {
-		const { userPrompt } = event.data;
+		const { userPrompt, currentDocument } = event.data;
 		const result = await step.run("run-writing-network", async () => {
 			const state = createState<WritingAgentState>({
 				userPrompt,
+				currentDocument,
 			});
 
 			try {

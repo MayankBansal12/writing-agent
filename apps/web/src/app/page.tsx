@@ -69,7 +69,10 @@ export default function Home() {
 				>
 					{isChatOpen && (
 						<div className="h-full w-full overflow-hidden pl-1">
-							<ChatPanel changeDocument={handleDocumentChange} />
+							<ChatPanel
+								changeDocument={handleDocumentChange}
+								currentDocument={content}
+							/>
 						</div>
 					)}
 				</Panel>

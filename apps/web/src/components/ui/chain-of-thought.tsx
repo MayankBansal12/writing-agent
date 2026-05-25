@@ -106,17 +106,16 @@ export function ChainOfThought({ children, className }: ChainOfThoughtProps) {
 
 	return (
 		<div className={cn("space-y-0", className)}>
-			{childrenArray.map((child, index) => (
-				<React.Fragment key={index}>
-					{React.isValidElement(child) &&
-						React.cloneElement(
+			{childrenArray.map((child, index) =>
+				React.isValidElement(child) && child.type !== React.Fragment
+					? React.cloneElement(
 							child as React.ReactElement<ChainOfThoughtStepProps>,
 							{
 								isLast: index === childrenArray.length - 1,
 							},
-						)}
-				</React.Fragment>
-			))}
+						)
+					: child,
+			)}
 		</div>
 	);
 }

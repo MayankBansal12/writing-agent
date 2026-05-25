@@ -5,12 +5,14 @@ import {
 	type Message,
 	openai,
 } from "@inngest/agent-kit";
+import { createEditPrompt } from "./helpers/prompts/edit";
 import { createImprovementPrompt } from "./helpers/prompts/improvement";
 import { createPlanningPrompt } from "./helpers/prompts/planning";
 import { createReviewPrompt } from "./helpers/prompts/review";
 import { createWritingPrompt } from "./helpers/prompts/writing";
 import { getTextContent, parseJSON } from "./helpers/utils";
 import type {
+	AgentStep,
 	FinalDocument,
 	WritingAgentState,
 	WritingDraft,
@@ -26,7 +28,10 @@ const groqConfig = {
 
 const planningAgent = createAgent<WritingAgentState>({
 	name: "Planning Agent",
-	system: createPlanningPrompt(),
+	system: ({ network }) => {
+		const state = network?.state.data as WritingAgentState;
+		return createPlanningPrompt(state?.currentDocument, state?.userPrompt);
+	},
 	model: openai({
 		model: process.env.GROQ_MODEL_PLANNING || "openai/gpt-oss-safeguard-20b",
 		...groqConfig,
@@ -38,7 +43,7 @@ const writerAgent = createAgent<WritingAgentState>({
 	system: ({ network }) => {
 		const state = network?.state.data as WritingAgentState;
 		if (!state.plan) return "Awaiting plan...";
-		return createWritingPrompt(state.plan);
+		return createWritingPrompt(state.plan, state.currentDocument);
 	},
 	model: openai({
 		model: process.env.GROQ_MODEL_WRITER || "groq/compound",
@@ -61,12 +66,41 @@ const writerAgent = createAgent<WritingAgentState>({
 	},
 });
 
+const editAgent = createAgent<WritingAgentState>({
+	name: "Editing Agent",
+	system: ({ network }) => {
+		const state = network?.state.data as WritingAgentState;
+		if (!state.currentDocument) return "Awaiting current document...";
+		return createEditPrompt(state.currentDocument, state.userPrompt);
+	},
+	model: openai({
+		model: process.env.GROQ_MODEL_WRITER || "groq/compound",
+		...groqConfig,
+	}),
+	lifecycle: {
+		onStart: ({ prompt, history }) => {
+			const editMessage: Message = {
+				type: "text",
+				role: "user",
+				content:
+					"Apply the requested edits to the current document and return the updated document as JSON only.",
+			};
+
+			return {
+				prompt,
+				history: [...(history || []), editMessage],
+				stop: false,
+			};
+		},
+	},
+});
+
 const reviewAgent = createAgent<WritingAgentState>({
 	name: "Review Agent",
 	system: ({ network }) => {
 		const state = network?.state.data as WritingAgentState;
 		if (!state.plan || !state.draft) return "Awaiting plan and draft...";
-		return createReviewPrompt(state.plan, state.draft);
+		return createReviewPrompt(state.plan, state.draft, state.currentDocument);
 	},
 	model: openai({
 		model: process.env.GROQ_MODEL_REVIEW || "openai/gpt-oss-20b",
@@ -96,7 +130,11 @@ const improvementAgent = createAgent<WritingAgentState>({
 		if (!state.plan || !state.draft || !state.review) {
 			return "Awaiting plan, draft, and review...";
 		}
-		return createImprovementPrompt(state.draft, state.review);
+		return createImprovementPrompt(
+			state.draft,
+			state.review,
+			state.currentDocument,
+		);
 	},
 	model: openai({
 		model: process.env.GROQ_MODEL_IMPROVEMENT || "qwen/qwen3-32b",
@@ -119,7 +157,42 @@ const improvementAgent = createAgent<WritingAgentState>({
 	},
 });
 
-const agents = [planningAgent, writerAgent, reviewAgent, improvementAgent];
+const agents = [
+	planningAgent,
+	writerAgent,
+	editAgent,
+	reviewAgent,
+	improvementAgent,
+];
+
+const fallbackRoute: AgentStep[] = ["write", "review", "improve"];
+
+const getDefaultSteps = (
+	plan?: WritingPlan,
+	hasCurrentDocument?: boolean,
+): AgentStep[] => {
+	if (plan?.steps?.length) return plan.steps;
+	if (plan?.mode === "review") return ["review"];
+	if (plan?.mode === "edit" || hasCurrentDocument) {
+		return ["edit", "review", "improve"];
+	}
+	return fallbackRoute;
+};
+
+const resolveStepAgent = (step: AgentStep) => {
+	switch (step) {
+		case "write":
+			return writerAgent;
+		case "edit":
+			return editAgent;
+		case "review":
+			return reviewAgent;
+		case "improve":
+			return improvementAgent;
+		default:
+			return undefined;
+	}
+};
 
 const router = async ({
 	network,
@@ -138,33 +211,86 @@ const router = async ({
 		switch (callCount) {
 			case 1: {
 				const plan = parseJSON<WritingPlan>(text);
-				if (plan) network.state.data.plan = plan;
-				break;
-			}
-			case 2: {
-				const result = parseJSON<WritingDraft>(text);
-				if (result?.draft) network.state.data.draft = result.draft;
-				break;
-			}
-			case 3: {
-				const review = parseJSON<WritingReview>(text);
-				if (review) network.state.data.review = review;
-				break;
-			}
-			case 4: {
-				const final = parseJSON<FinalDocument>(text);
-				if (final?.final_document) {
-					network.state.data.finalDocument = final.final_document;
+				if (plan) {
+					network.state.data.plan = plan;
+					const steps = getDefaultSteps(
+						plan,
+						!!network.state.data.currentDocument,
+					);
+					network.state.data.route = plan?.steps
+						? {
+								mode: plan?.mode || "write",
+								steps: plan.steps,
+								needs_review: plan?.needs_review,
+								needs_improvement: plan?.needs_improvement,
+								edit_scope: plan?.edit_scope,
+							}
+						: {
+								mode: plan?.mode || "write",
+								steps,
+								needs_review: plan?.needs_review,
+								needs_improvement: plan?.needs_improvement,
+								edit_scope: plan?.edit_scope,
+							};
+					network.state.data.currentStepIndex = 0;
 				}
+				break;
+			}
+			default: {
+				if (callCount < 2) break;
+				const steps = getDefaultSteps(
+					network.state.data.plan,
+					!!network.state.data.currentDocument,
+				);
+				const stepIndex = network.state.data.currentStepIndex ?? 0;
+				const currentStep = steps[stepIndex];
+
+				switch (currentStep) {
+					case "write":
+					case "edit": {
+						const result = parseJSON<WritingDraft>(text);
+						if (result?.draft) network.state.data.draft = result.draft;
+						break;
+					}
+					case "review": {
+						const review = parseJSON<WritingReview>(text);
+						if (review) network.state.data.review = review;
+						break;
+					}
+					case "improve": {
+						const final = parseJSON<FinalDocument>(text);
+						if (final?.final_document) {
+							network.state.data.finalDocument = final.final_document;
+						}
+						break;
+					}
+				}
+
+				network.state.data.currentStepIndex = stepIndex + 1;
 				break;
 			}
 		}
 	}
 
 	if (callCount === 0) return planningAgent;
-	if (callCount === 1 && state.plan) return writerAgent;
-	if (callCount === 2 && state.draft) return reviewAgent;
-	if (callCount === 3 && state.review) return improvementAgent;
+	if (callCount === 1 && state.plan) {
+		const steps = getDefaultSteps(state.plan, !!state.currentDocument);
+		const nextStep = steps[0];
+		if (nextStep === "review" && !state.draft && state.currentDocument) {
+			state.draft = state.currentDocument;
+		}
+		return nextStep ? resolveStepAgent(nextStep) : undefined;
+	}
+
+	if (callCount >= 2) {
+		const steps = getDefaultSteps(state.plan, !!state.currentDocument);
+		const stepIndex = state.currentStepIndex ?? 0;
+		const nextStep = steps[stepIndex];
+		if (nextStep === "review" && !state.draft && state.currentDocument) {
+			state.draft = state.currentDocument;
+		}
+		return nextStep ? resolveStepAgent(nextStep) : undefined;
+	}
 
 	return undefined;
 };
@@ -188,15 +314,21 @@ export interface OrchestratorResult {
 
 export async function runWritingWorkflow(
 	userPrompt: string,
+	currentDocument?: string,
 ): Promise<OrchestratorResult> {
 	const state = createState<WritingAgentState>({
 		userPrompt,
+		currentDocument,
 	});
 
 	await writingNetwork.run(userPrompt, { state });
 
 	return {
-		success: !!state.data.finalDocument,
+		success: !!(
+			state.data.finalDocument ||
+			state.data.draft ||
+			state.data.review
+		),
 		finalDocument: state.data.finalDocument,
 		state: state.data,
 	};

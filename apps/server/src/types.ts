@@ -1,3 +1,13 @@
+export type AgentStep = "write" | "edit" | "review" | "improve";
+
+export interface WritingRoute {
+	mode: "write" | "edit" | "review";
+	steps: AgentStep[];
+	needs_review?: boolean;
+	needs_improvement?: boolean;
+	edit_scope?: "none" | "small" | "medium" | "large";
+}
+
 export interface WritingPlan {
 	intent: string;
 	requirements: string;
@@ -5,6 +15,11 @@ export interface WritingPlan {
 	tone: string;
 	constraints: string;
 	optional_search_queries?: string[];
+	mode?: WritingRoute["mode"];
+	steps?: AgentStep[];
+	needs_review?: boolean;
+	needs_improvement?: boolean;
+	edit_scope?: WritingRoute["edit_scope"];
 }
 
 export interface WritingDraft {
@@ -25,10 +40,13 @@ export interface FinalDocument {
 
 export interface WritingAgentState {
 	userPrompt: string;
+	currentDocument?: string;
 	plan?: WritingPlan;
 	draft?: string;
 	review?: WritingReview;
 	finalDocument?: string;
+	route?: WritingRoute;
+	currentStepIndex?: number;
 }
 
 export interface AgentTiming {

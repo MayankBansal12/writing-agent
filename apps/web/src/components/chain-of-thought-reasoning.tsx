@@ -12,6 +12,7 @@ import { TextShimmer } from "./ui/text-shimmer";
 
 interface WritingAgentState {
 	userPrompt: string;
+	currentDocument?: string;
 	plan?: {
 		intent: string;
 		requirements: string;
@@ -19,6 +20,11 @@ interface WritingAgentState {
 		tone: string;
 		constraints: string;
 		optional_search_queries?: string[];
+		mode?: "write" | "edit" | "review";
+		steps?: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
 	};
 	draft?: string;
 	review?: {
@@ -29,6 +35,14 @@ interface WritingAgentState {
 		suggested_improvements: string[];
 	};
 	finalDocument?: string;
+	route?: {
+		mode: "write" | "edit" | "review";
+		steps: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
+	};
+	currentStepIndex?: number;
 }
 
 interface ChainOfThoughtReasoningProps {
@@ -38,19 +52,21 @@ interface ChainOfThoughtReasoningProps {
 	animated?: boolean;
 }
 
-const stepTitles = [
-	"Planning next moves: Understanding the requirements and making a plan",
-	"Writing a draft: Implementing the plan to write an initial draft",
-	"Reviewing the draft: Generating correction pointers",
-	"Getting Final Draft Ready: Implementing targeted improvements",
-];
+const stepTitles = {
+	planning: "Planning next moves: Understanding the requirements",
+	write: "Writing a draft: Implementing the plan",
+	edit: "Editing the document: Applying requested changes",
+	review: "Reviewing the draft: Generating correction pointers",
+	improve: "Finalizing the draft: Implementing targeted improvements",
+};
 
-const stepIcons = [
-	<Search className="size-4" />,
-	<Pencil className="size-4" />,
-	<MessageSquareQuote className="size-4" />,
-	<Target className="size-4" />,
-];
+const stepIcons = {
+	planning: <Search className="size-4" />,
+	write: <Pencil className="size-4" />,
+	edit: <Pencil className="size-4" />,
+	review: <MessageSquareQuote className="size-4" />,
+	improve: <Target className="size-4" />,
+};
 
 function formatPlan(plan: WritingAgentState["plan"]): React.ReactNode {
 	if (!plan) return null;
@@ -86,14 +102,23 @@ function formatPlan(plan: WritingAgentState["plan"]): React.ReactNode {
 
 function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 	if (!review) return null;
+	const buildKeyedItems = (items?: string[]) => {
+		const counts = new Map<string, number>();
+		return (items || []).map((item) => {
+			const count = counts.get(item) ?? 0;
+			counts.set(item, count + 1);
+			return { key: `${item}-${count}`, value: item };
+		});
+	};
+
 	return (
 		<div className="space-y-2 text-sm">
 			{review?.issues?.length > 0 && (
 				<div>
 					<strong>Issues:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review?.issues?.map((issue, i) => (
-							<li key={i}>{issue}</li>
+						{buildKeyedItems(review.issues).map((issue) => (
+							<li key={issue.key}>{issue.value}</li>
 						))}
 					</ul>
 				</div>
@@ -102,8 +127,8 @@ function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 				<div>
 					<strong>Missing Elements:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review?.missing_elements?.map((elem, i) => (
-							<li key={i}>{elem}</li>
+						{buildKeyedItems(review.missing_elements).map((elem) => (
+							<li key={elem.key}>{elem.value}</li>
 						))}
 					</ul>
 				</div>
@@ -112,8 +137,8 @@ function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 				<div>
 					<strong>Tone Mismatches:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review?.tone_mismatches?.map((mismatch, i) => (
-							<li key={i}>{mismatch}</li>
+						{buildKeyedItems(review.tone_mismatches).map((mismatch) => (
+							<li key={mismatch.key}>{mismatch.value}</li>
 						))}
 					</ul>
 				</div>
@@ -122,8 +147,8 @@ function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 				<div>
 					<strong>Structural Problems:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review?.structural_problems?.map((problem, i) => (
-							<li key={i}>{problem}</li>
+						{buildKeyedItems(review.structural_problems).map((problem) => (
+							<li key={problem.key}>{problem.value}</li>
 						))}
 					</ul>
 				</div>
@@ -132,9 +157,11 @@ function formatReview(review: WritingAgentState["review"]): React.ReactNode {
 				<div>
 					<strong>Suggested Improvements:</strong>
 					<ul className="ml-2 list-inside list-disc">
-						{review?.suggested_improvements?.map((improvement, i) => (
-							<li key={i}>{improvement}</li>
-						))}
+						{buildKeyedItems(review.suggested_improvements).map(
+							(improvement) => (
+								<li key={improvement.key}>{improvement.value}</li>
+							),
+						)}
 					</ul>
 				</div>
 			)}
@@ -149,32 +176,44 @@ export function ChainOfThoughtReasoning({
 	animated = true,
 }: ChainOfThoughtReasoningProps) {
 	const [visibleSteps, setVisibleSteps] = useState<number[]>([]);
+	const routeSteps = stateData?.route?.steps || [];
+	const defaultStepOrder = ["planning", "write", "review", "improve"] as const;
+	const stepOrder = routeSteps.length
+		? (["planning", ...routeSteps] as const)
+		: defaultStepOrder;
 
 	const stateStepItems: (React.ReactNode | string)[][] = stateData
-		? [
-				stateData.plan ? [formatPlan(stateData.plan)] : [],
-				stateData.draft ? [stateData.draft] : [],
-				stateData.review ? [formatReview(stateData.review)] : [],
-				stateData.finalDocument ? [stateData.finalDocument] : [],
-			]
+		? stepOrder.map((step) => {
+				switch (step) {
+					case "planning":
+						return stateData.plan ? [formatPlan(stateData.plan)] : [];
+					case "write":
+					case "edit":
+						return stateData.draft ? [stateData.draft] : [];
+					case "review":
+						return stateData.review ? [formatReview(stateData.review)] : [];
+					case "improve":
+						return stateData.finalDocument ? [stateData.finalDocument] : [];
+					default:
+						return [];
+				}
+			})
 		: [];
 
 	const itemsToUse = stateData ? stateStepItems : stepItems;
+	const stepCount = Math.max(stepOrder.length, itemsToUse?.length || 0);
 
 	useEffect(() => {
 		if (!animated || !isLoading) {
 			// If not animated or not loading, show all steps immediately
-			const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
-			setVisibleSteps(Array.from({ length: maxSteps }, (_, i) => i));
+			setVisibleSteps(Array.from({ length: stepCount }, (_, i) => i));
 			return;
 		}
 
 		setVisibleSteps([]);
 
 		const timeouts: NodeJS.Timeout[] = [];
-		const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
-
-		for (let index = 0; index < maxSteps; index++) {
+		for (let index = 0; index < stepCount; index++) {
 			const timeout = setTimeout(() => {
 				setVisibleSteps((prev) => [...prev, index]);
 			}, index * 5000);
@@ -184,26 +223,26 @@ export function ChainOfThoughtReasoning({
 		return () => {
 			timeouts.forEach(clearTimeout);
 		};
-	}, [isLoading, itemsToUse?.length, animated]);
-
-	const maxSteps = Math.max(stepTitles?.length, itemsToUse?.length || 0);
+	}, [isLoading, itemsToUse?.length, animated, stepCount]);
 
 	return (
 		<div className="w-full max-w-3xl">
 			<ChainOfThought>
 				{animated ? (
 					<AnimatePresence>
-						{Array.from({ length: maxSteps })?.map((_, index) => {
+						{stepOrder.map((stepKey, index) => {
 							if (!visibleSteps.includes(index)) return null;
 
 							const items = itemsToUse[index] || [];
 							const hasItems = items?.length > 0;
-							const title = stepTitles[index] || "Generating Final Response...";
-							const icon = stepIcons[index] || <Target className="size-4" />;
+							const title =
+								stepTitles[stepKey] || "Generating Final Response...";
+							const icon = stepIcons[stepKey] || <Target className="size-4" />;
+							let itemCounter = 0;
 
 							return (
 								<motion.div
-									key={index}
+									key={stepKey}
 									initial={{ opacity: 0, y: 10 }}
 									animate={{ opacity: 1, y: 0 }}
 									exit={{ opacity: 0, y: -10 }}
@@ -215,11 +254,17 @@ export function ChainOfThoughtReasoning({
 										</ChainOfThoughtTrigger>
 										{hasItems ? (
 											<ChainOfThoughtContent>
-												{items?.map((item, itemIndex) => (
-													<ChainOfThoughtItem key={itemIndex}>
-														{item}
-													</ChainOfThoughtItem>
-												))}
+												{items?.map((item) => {
+													const key =
+														typeof item === "string"
+															? `${stepKey}-${itemCounter++}-${item.slice(0, 12)}`
+															: `${stepKey}-item-${itemCounter++}`;
+													return (
+														<ChainOfThoughtItem key={key}>
+															{item}
+														</ChainOfThoughtItem>
+													);
+												})}
 											</ChainOfThoughtContent>
 										) : (
 											<ChainOfThoughtContent>
@@ -235,26 +280,34 @@ export function ChainOfThoughtReasoning({
 					</AnimatePresence>
 				) : (
 					<>
-						{Array.from({ length: maxSteps })?.map((_, index) => {
+						{stepOrder.map((stepKey, index) => {
 							const items = itemsToUse[index] || [];
 							const hasItems = items?.length > 0;
-							const title = stepTitles[index] || "Generating Final Response...";
-							const icon = stepIcons[index] || <Target className="size-4" />;
+							const title =
+								stepTitles[stepKey] || "Generating Final Response...";
+							const icon = stepIcons[stepKey] || <Target className="size-4" />;
+							let itemCounter = 0;
 
 							// Only show steps that have data
 							if (!hasItems) return null;
 
 							return (
-								<ChainOfThoughtStep key={index}>
+								<ChainOfThoughtStep key={stepKey}>
 									<ChainOfThoughtTrigger leftIcon={icon}>
 										{title}
 									</ChainOfThoughtTrigger>
 									<ChainOfThoughtContent>
-										{items?.map((item, itemIndex) => (
-											<ChainOfThoughtItem key={itemIndex}>
-												{item}
-											</ChainOfThoughtItem>
-										))}
+										{items?.map((item) => {
+											const key =
+												typeof item === "string"
+													? `${stepKey}-${itemCounter++}-${item.slice(0, 12)}`
+													: `${stepKey}-item-${itemCounter++}`;
+											return (
+												<ChainOfThoughtItem key={key}>
+													{item}
+												</ChainOfThoughtItem>
+											);
+										})}
 									</ChainOfThoughtContent>
 								</ChainOfThoughtStep>
 							);

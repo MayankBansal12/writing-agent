@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, CheckLine, Copy, Square } from "lucide-react";
+import { ArrowUp, CheckLine, Copy, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { SystemMessage } from "./ui/system-message";
 
 interface WritingAgentState {
 	userPrompt: string;
+	currentDocument?: string;
 	plan?: {
 		intent: string;
 		requirements: string;
@@ -33,6 +34,11 @@ interface WritingAgentState {
 		tone: string;
 		constraints: string;
 		optional_search_queries?: string[];
+		mode?: "write" | "edit" | "review";
+		steps?: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
 	};
 	draft?: string;
 	review?: {
@@ -43,29 +49,109 @@ interface WritingAgentState {
 		suggested_improvements: string[];
 	};
 	finalDocument?: string;
+	route?: {
+		mode: "write" | "edit" | "review";
+		steps: ("write" | "edit" | "review" | "improve")[];
+		needs_review?: boolean;
+		needs_improvement?: boolean;
+		edit_scope?: "none" | "small" | "medium" | "large";
+	};
+	currentStepIndex?: number;
 }
 
-interface Message {
+interface ChatMessage {
 	id: string;
 	content: string;
 	role: "user" | "assistant";
 	format?: "mdx" | "plain";
 	stateData?: WritingAgentState;
+	canReviewDiff?: boolean;
 }
+
+type DiffLine = {
+	type: "equal" | "add" | "remove";
+	text: string;
+	originalIndex?: number;
+	suggestedIndex?: number;
+};
+
+type DiffReview = {
+	original: string;
+	suggested: string;
+	diff: DiffLine[];
+};
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export function ChatPanel({
 	changeDocument,
+	currentDocument,
 }: {
 	changeDocument: (content: string) => void;
+	currentDocument: string;
 }) {
-	const [messages, setMessages] = useState<Message[]>([]);
+	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [inputValue, setInputValue] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [copied, setCopied] = useState<string | null>(null);
+	const [diffReview, setDiffReview] = useState<DiffReview | null>(null);
 	const promptInputRef = useRef<PromptInputRef>(null);
+
+	const buildDiff = (original: string, suggested: string): DiffLine[] => {
+		const originalLines = original.split("\n");
+		const suggestedLines = suggested.split("\n");
+		const rows = originalLines.length;
+		const cols = suggestedLines.length;
+		const dp = Array.from({ length: rows + 1 }, () => Array(cols + 1).fill(0));
+
+		for (let i = rows - 1; i >= 0; i -= 1) {
+			for (let j = cols - 1; j >= 0; j -= 1) {
+				dp[i][j] =
+					originalLines[i] === suggestedLines[j]
+						? dp[i + 1][j + 1] + 1
+						: Math.max(dp[i + 1][j], dp[i][j + 1]);
+			}
+		}
+
+		const diff: DiffLine[] = [];
+		let i = 0;
+		let j = 0;
+
+		while (i < rows && j < cols) {
+			if (originalLines[i] === suggestedLines[j]) {
+				diff.push({
+					type: "equal",
+					text: originalLines[i],
+					originalIndex: i,
+					suggestedIndex: j,
+				});
+				i += 1;
+				j += 1;
+				continue;
+			}
+
+			if (dp[i + 1][j] >= dp[i][j + 1]) {
+				diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
+				i += 1;
+			} else {
+				diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
+				j += 1;
+			}
+		}
+
+		while (i < rows) {
+			diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
+			i += 1;
+		}
+
+		while (j < cols) {
+			diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
+			j += 1;
+		}
+
+		return diff;
+	};
 
 	const handleCopy = (content: string, messageId: string) => {
 		navigator.clipboard.writeText(content);
@@ -73,12 +159,52 @@ export function ChatPanel({
 		setTimeout(() => setCopied(null), 2000);
 	};
 
+	const formatReviewAsMarkdown = (
+		review: WritingAgentState["review"],
+	): string => {
+		if (!review) return "No review feedback returned.";
+
+		const sections: { title: string; items?: string[] }[] = [
+			{ title: "Issues", items: review.issues },
+			{ title: "Missing Elements", items: review.missing_elements },
+			{ title: "Tone Mismatches", items: review.tone_mismatches },
+			{ title: "Structural Problems", items: review.structural_problems },
+			{ title: "Suggested Improvements", items: review.suggested_improvements },
+		];
+
+		const body = sections
+			.filter((section) => section.items && section.items.length > 0)
+			.map(
+				(section) =>
+					`### ${section.title}\n${section.items
+						?.map((item) => `- ${item}`)
+						.join("\n")}`,
+			)
+			.join("\n\n");
+
+		return `## Review Feedback\n\n${body || "No actionable issues found."}`;
+	};
+
+	const openDiffReview = (content: string) => {
+		setDiffReview({
+			original: currentDocument,
+			suggested: content,
+			diff: buildDiff(currentDocument, content),
+		});
+	};
+
+	const handleApplyDiff = () => {
+		if (!diffReview) return;
+		changeDocument(diffReview.suggested);
+		setDiffReview(null);
+	};
+
 	const handleSend = async () => {
 		if (!inputValue.trim()) return;
 		setIsLoading(true);
 		setError(null);
 
-		const userMessage: Message = {
+		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
 			content: inputValue,
 			role: "user",
@@ -94,7 +220,10 @@ export function ChatPanel({
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ userPrompt: promptValue }),
+				body: JSON.stringify({
+					userPrompt: promptValue,
+					currentDocument,
+				}),
 			});
 
 			if (!response.ok) {
@@ -111,15 +240,28 @@ export function ChatPanel({
 
 			if (!data) throw Error("No data received");
 
-			const contentToUse = data.finalDocument || data.state?.draft;
-			if (!contentToUse) throw Error("No content generated");
+			const routeSteps = data.state?.route?.steps || [];
+			const isReviewOnly =
+				data.state?.route?.mode === "review" ||
+				(routeSteps.length === 1 && routeSteps[0] === "review");
+			const contentToUse =
+				data.finalDocument || data.state?.finalDocument || data.state?.draft;
 
-			const assistantMessage: Message = {
+			const messageContent = isReviewOnly
+				? formatReviewAsMarkdown(data.state?.review)
+				: contentToUse;
+
+			if (!messageContent) throw Error("No content generated");
+
+			const canReviewDiff = !isReviewOnly;
+
+			const assistantMessage: ChatMessage = {
 				id: (Date.now() + 1).toString(),
-				content: `${contentToUse}`,
+				content: messageContent,
 				role: "assistant",
 				format: "plain",
 				stateData: data.state,
+				canReviewDiff,
 			};
 			setMessages((prev) => [...prev, assistantMessage]);
 		} catch (err) {
@@ -194,18 +336,19 @@ export function ChatPanel({
 													/>
 												</Button>
 											</MessageAction>
-											{message.role === "assistant" && (
-												<MessageAction tooltip="Apply changes to document">
-													<Button
-														variant="ghost"
-														size="icon"
-														className="w-fit px-2 opacity-0 group-hover:opacity-100"
-														onClick={() => changeDocument(message.content)}
-													>
-														<CheckLine className="size-4" /> Apply Changes
-													</Button>
-												</MessageAction>
-											)}
+											{message.role === "assistant" &&
+												message.canReviewDiff && (
+													<MessageAction tooltip="Compare changes with the document">
+														<Button
+															variant="ghost"
+															size="icon"
+															className="w-fit px-2 opacity-0 group-hover:opacity-100"
+															onClick={() => openDiffReview(message.content)}
+														>
+															<CheckLine className="size-4" /> Review Changes
+														</Button>
+													</MessageAction>
+												)}
 										</MessageActions>
 									</motion.div>
 								</div>
@@ -279,6 +422,83 @@ export function ChatPanel({
 						</PromptInputAction>
 					</PromptInputActions>
 				</PromptInput>
+
+				{diffReview && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+						<div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+							<div className="flex items-start justify-between border-b border-border px-6 py-5">
+								<div>
+									<h3 className="font-semibold text-xl">Review AI Changes</h3>
+									<p className="mt-1 text-muted-foreground text-sm">
+										Nothing changes until you approve the suggestion.
+									</p>
+								</div>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => setDiffReview(null)}
+								>
+									<X className="size-4" />
+								</Button>
+							</div>
+
+							<div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+								<div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-muted/30">
+									<div className="sticky top-0 grid border-b border-border bg-card px-4 py-3 text-sm font-medium md:grid-cols-2">
+										<div>Original</div>
+										<div>Suggested Fix</div>
+									</div>
+									<div className="divide-y divide-border font-mono text-sm leading-6">
+										{diffReview.diff.map((line, index) => (
+											<div
+												key={`${line.originalIndex ?? "o"}-${line.suggestedIndex ?? "s"}-${index}`}
+												className="grid md:grid-cols-2"
+											>
+												<div
+													className={cn(
+														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														line.type === "remove"
+															? "bg-red-500/15 text-red-200 line-through"
+															: line.type === "equal"
+																? "text-foreground"
+																: "text-muted-foreground",
+													)}
+												>
+													{line.type === "add" ? "" : line.text || " "}
+												</div>
+												<div
+													className={cn(
+														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														line.type === "add"
+															? "bg-emerald-500/15 text-emerald-200"
+															: line.type === "equal"
+																? "text-foreground"
+																: "text-muted-foreground",
+													)}
+												>
+													{line.type === "remove" ? "" : line.text || " "}
+												</div>
+											</div>
+										))}
+									</div>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
+								<p className="text-muted-foreground text-sm">
+									Apply will replace the current document with the suggested
+									version.
+								</p>
+								<div className="flex items-center gap-2">
+									<Button variant="outline" onClick={() => setDiffReview(null)}>
+										Cancel
+									</Button>
+									<Button onClick={handleApplyDiff}>Accept Changes</Button>
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);
