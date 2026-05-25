@@ -1,10 +1,3 @@
-import type { Message } from "@inngest/agent-kit";
-
-export function getTextContent(output: Message[]): string {
-	const textMessage = output.find((msg) => msg.type === "text");
-	return textMessage?.type === "text" ? String(textMessage.content) : "";
-}
-
 export function parseJSON<T>(text: string): T | null {
 	try {
 		const jsonMatch = text.match(/\{[\s\S]*\}/);

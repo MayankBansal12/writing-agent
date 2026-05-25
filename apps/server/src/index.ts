@@ -1,8 +1,6 @@
 import fastifyCors from "@fastify/cors";
 import "dotenv/config";
 import Fastify from "fastify";
-import { fastifyPlugin } from "inngest/fastify";
-import { agentRunFunction, inngestClient } from "./inngest";
 import { runWritingWorkflow } from "./network";
 
 const baseCorsConfig = {
@@ -18,11 +16,6 @@ const fastify = Fastify({
 });
 
 fastify.register(fastifyCors, baseCorsConfig);
-
-fastify.register(fastifyPlugin, {
-	client: inngestClient,
-	functions: [agentRunFunction],
-});
 
 fastify.post("/api/chat", async (request, reply) => {
 	try {
@@ -66,9 +59,3 @@ fastify.listen({ host, port: PORT }, (err, address) => {
 	}
 	console.log(`Server listening at ${address}`);
 });
-
-// const server = createServer({
-// 	networks: [writingNetwork],
-// });
-
-// server.listen(3010, () => console.log("Agent kit running!"));

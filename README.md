@@ -81,7 +81,13 @@ pnpm install
 ### Environment Variables
 
 - For Server
-Create a `.env` file in the `apps/server` directory with the following variables:
+Copy the example file and set your values:
+
+```bash
+cp apps/server/.env.example apps/server/.env
+```
+
+Server variables:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
@@ -91,7 +97,13 @@ CORS_ORIGIN=http://localhost:3001
 ```
 
 - For Client
-Create a `.env` file in the `apps/web` directory with the following variables:
+Copy the example file and set your values:
+
+```bash
+cp apps/web/.env.example apps/web/.env
+```
+
+Client variables:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -114,7 +126,6 @@ This will start:
 
 - **Web only**: `pnpm run dev:web`
 - **Server only**: `pnpm run dev:server`
-- **Inngest Dev Server**: `pnpm run inngest:dev`
 
 ## Project Structure
 
@@ -140,8 +151,7 @@ ai-writing-agent/
 │       │   │       ├── review.ts
 │       │   │       └── improvement.ts
 │       │   ├── index.ts       # Fastify server setup
-│       │   ├── inngest.ts     # Inngest function definitions
-│       │   ├── network.ts     # Agent network orchestration
+│       │   ├── network.ts     # LangGraph orchestration for agent workflow
 │       │   └── types.ts       # TypeScript type definitions
 │       └── package.json
 ├── packages/
@@ -157,16 +167,15 @@ ai-writing-agent/
 - `pnpm run build:server`: Build only the server
 - `pnpm run dev:web`: Start only the web application
 - `pnpm run dev:server`: Start only the server
-- `pnpm run inngest:dev`: Start Inngest development server
 - `pnpm run check-types`: Check TypeScript types across all apps
 - `pnpm run check`: Run Biome formatting and linting
 
 ## Technology Stack
 
 - **Frontend**: Next.js, React, TypeScript, Tailwind CSS
-- **Backend**: Bun.js, Fastify, Inngest Agent Kit
+- **Backend**: Bun.js, Fastify, LangChain
 - **AI Models**: Groq API (various models via OpenAI-compatible interface)
-- **Orchestration**: Inngest for workflow management
+- **Orchestration**: LangGraph for workflow management
 - **Code Quality**: Biome for linting and formatting
 
 ## API Endpoints
