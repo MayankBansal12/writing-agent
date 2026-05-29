@@ -1,11 +1,46 @@
-export type AgentStep = "write" | "edit" | "review" | "improve";
+export type TaskType = "research" | "write" | "edit" | "review" | "improve";
+export type TaskDifficulty = "light" | "high_end";
 
-export interface WritingRoute {
-	mode: "write" | "edit" | "review";
-	steps: AgentStep[];
-	needs_review?: boolean;
-	needs_improvement?: boolean;
-	edit_scope?: "none" | "small" | "medium" | "large";
+export interface ModelRoutingChoice {
+	model: string;
+	difficulty: TaskDifficulty;
+}
+
+export interface ModelRoutingPlan {
+	planning: {
+		primary: string;
+		fallback: string;
+	};
+	writing: {
+		high_end: ModelRoutingChoice;
+		light: ModelRoutingChoice;
+	};
+	review: {
+		high_end: ModelRoutingChoice;
+		light: ModelRoutingChoice;
+	};
+	research: {
+		primary: string;
+		fallback: string;
+	};
+	improvement: {
+		high_end: ModelRoutingChoice;
+		light: ModelRoutingChoice;
+	};
+}
+
+export type TaskStatus = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface WritingTask {
+	id: string;
+	type: TaskType;
+	title: string;
+	description?: string;
+	depends_on?: string[];
+	status: TaskStatus;
+	difficulty?: TaskDifficulty;
+	model?: string;
+	outputs?: Record<string, unknown>;
 }
 
 export interface WritingPlan {
@@ -15,11 +50,15 @@ export interface WritingPlan {
 	tone: string;
 	constraints: string;
 	optional_search_queries?: string[];
-	mode?: WritingRoute["mode"];
-	steps?: AgentStep[];
+	mode?: "write" | "edit" | "review" | "research";
+	tasks?: WritingTask[];
+	model_strategy?: ModelRoutingPlan;
 	needs_review?: boolean;
 	needs_improvement?: boolean;
-	edit_scope?: WritingRoute["edit_scope"];
+	edit_scope?: "none" | "small" | "medium" | "large";
+	stop_conditions?: {
+		max_calls?: number;
+	};
 }
 
 export interface WritingDraft {
@@ -45,8 +84,6 @@ export interface WritingAgentState {
 	draft?: string;
 	review?: WritingReview;
 	finalDocument?: string;
-	route?: WritingRoute;
-	currentStepIndex?: number;
 }
 
 export interface AgentTiming {

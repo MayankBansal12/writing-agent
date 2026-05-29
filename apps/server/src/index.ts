@@ -1,4 +1,5 @@
 import fastifyCors from "@fastify/cors";
+import { randomUUID } from "crypto";
 import "dotenv/config";
 import Fastify from "fastify";
 import { runWritingWorkflow } from "./network";
@@ -43,6 +44,159 @@ fastify.post("/api/chat", async (request, reply) => {
 			error: "Internal server error",
 			message: error instanceof Error ? error.message : "Unknown error",
 		});
+	}
+});
+
+const streamQueue = new Map<
+	string,
+	{ userPrompt: string; currentDocument?: string }
+>();
+
+fastify.post("/api/chat/stream/init", async (request, reply) => {
+	const { userPrompt, currentDocument } = request.body as {
+		userPrompt: string;
+		currentDocument?: string;
+	};
+	if (!userPrompt) {
+		return reply.status(400).send({ error: "userPrompt is required" });
+	}
+
+	const streamId = randomUUID();
+	streamQueue.set(streamId, { userPrompt, currentDocument });
+	fastify.log.info(
+		{
+			route: "/api/chat/stream/init",
+			streamId,
+			promptLength: userPrompt.length,
+			hasCurrentDocument: Boolean(currentDocument),
+			queueSize: streamQueue.size,
+		},
+		"chat stream initialized",
+	);
+	return reply.send({ streamId });
+});
+
+fastify.get("/api/chat/stream", async (request, reply) => {
+	const { streamId } = request.query as { streamId?: string };
+	if (!streamId) {
+		return reply.status(400).send({ error: "streamId is required" });
+	}
+
+	const queued = streamQueue.get(streamId);
+	if (!queued) {
+		fastify.log.warn(
+			{ route: "/api/chat/stream", streamId, queueSize: streamQueue.size },
+			"chat stream requested with missing streamId",
+		);
+		return reply.status(404).send({ error: "streamId not found" });
+	}
+	streamQueue.delete(streamId);
+	const startedAt = Date.now();
+	fastify.log.info(
+		{
+			route: "/api/chat/stream",
+			streamId,
+			queueSize: streamQueue.size,
+			promptLength: queued.userPrompt.length,
+			hasCurrentDocument: Boolean(queued.currentDocument),
+		},
+		"chat stream execution started",
+	);
+
+	const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:3001";
+
+	reply.raw.writeHead(200, {
+		"Content-Type": "text/event-stream",
+		"Cache-Control": "no-cache",
+		Connection: "keep-alive",
+		"Access-Control-Allow-Origin": corsOrigin,
+		"Access-Control-Allow-Credentials": "true",
+		Vary: "Origin",
+		"X-Accel-Buffering": "no",
+	});
+	if (typeof reply.raw.flushHeaders === "function") {
+		reply.raw.flushHeaders();
+	}
+	reply.raw.write("\n");
+	fastify.log.info(
+		{ route: "/api/chat/stream", streamId },
+		"sse connection opened and headers flushed",
+	);
+
+	let connectionClosed = false;
+	const handleClientClose = () => {
+		if (connectionClosed) return;
+		connectionClosed = true;
+		fastify.log.info(
+			{
+				route: "/api/chat/stream",
+				streamId,
+				durationMs: Date.now() - startedAt,
+			},
+			"client closed sse connection",
+		);
+	};
+	request.raw.on("close", handleClientClose);
+	request.raw.on("aborted", handleClientClose);
+
+	const sendEvent = (event: string, data: unknown) => {
+		fastify.log.info(
+			{
+				route: "/api/chat/stream",
+				streamId,
+				event,
+			},
+			"sse event streamed to client",
+		);
+		reply.raw.write(`event: ${event}\n`);
+		reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+	};
+
+	try {
+		fastify.log.info(
+			{ route: "/api/chat/stream", streamId },
+			"streaming workflow execution starting",
+		);
+		await runWritingWorkflow(
+			queued.userPrompt,
+			queued.currentDocument,
+			{
+				streamId,
+				log: fastify.log,
+			},
+			(event) => {
+				sendEvent(event.event, event.data);
+			},
+		);
+		fastify.log.info(
+			{
+				route: "/api/chat/stream",
+				streamId,
+				durationMs: Date.now() - startedAt,
+			},
+			"streaming workflow completed",
+		);
+		reply.raw.write("event: done\n");
+		reply.raw.write("data: {}\n\n");
+		fastify.log.info(
+			{ route: "/api/chat/stream", streamId },
+			"sse done event sent",
+		);
+		reply.raw.end();
+	} catch (error) {
+		fastify.log.error(
+			{
+				route: "/api/chat/stream",
+				streamId,
+				durationMs: Date.now() - startedAt,
+				error,
+			},
+			"chat stream failed",
+		);
+		sendEvent("agent_error", {
+			message: error instanceof Error ? error.message : "Unknown error",
+		});
+		reply.raw.end();
 	}
 });
 

@@ -4,6 +4,8 @@ export function createImprovementPrompt(
 	draft: string,
 	review: WritingReview,
 	currentDocument?: string,
+	modelHint?: string,
+	difficulty?: string,
 ): string {
 	const reviewSummary = [
 		review?.issues.length ? `Issues: ${review?.issues?.join("; ")}` : "",
@@ -29,10 +31,15 @@ export function createImprovementPrompt(
 
 	return `You are the Improvement Agent. Generate an improved and polished version of the draft using the review notes.
 		DRAFT TO IMPROVE: ${draft}${documentContext}
+		MODEL ROUTING:
+		- Selected model: ${modelHint || "unspecified"}
+		- Task difficulty: ${difficulty || "unspecified"}
 
 		REVIEW NOTES: ${reviewSummary}
 
 		INSTRUCTIONS:
+		- If the task is light, make targeted improvements with minimal churn
+		- If the task is high_end, be more thorough and polish structure and phrasing carefully
 		- Fix all issues while preserving the meaning and user intent
 		- Maintain the planned tone and structure
 		- Expand missing parts only when required
