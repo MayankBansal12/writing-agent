@@ -3,12 +3,22 @@ import type { WritingPlan } from "../../types";
 export function createWritingPrompt(
 	plan: WritingPlan,
 	currentDocument?: string,
+	researchContext?: string,
+	modelHint?: string,
+	difficulty?: string,
 ): string {
 	const documentContext = currentDocument?.trim()
 		? `\n\nCURRENT DOCUMENT (for continuity if useful):\n${currentDocument}\n`
 		: "";
+	const researchNotes = researchContext?.trim()
+		? `\n\nRESEARCH NOTES (use as factual grounding if relevant):\n${researchContext}\n`
+		: "";
 
-	return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.${documentContext}
+	return `You are the Writing Agent. Your goal is to write quality documents, sound human and specific. Generate a complete, coherent draft based on the provided plan.${documentContext}${researchNotes}
+    MODEL ROUTING:
+    - Selected model: ${modelHint || "unspecified"}
+    - Task difficulty: ${difficulty || "unspecified"}
+
     PLAN CONTEXT:
     - Intent: ${plan?.intent}
     - Requirements: ${plan?.requirements}
@@ -17,6 +27,8 @@ export function createWritingPrompt(
     - Constraints: ${plan?.constraints}
 
     INSTRUCTIONS:
+    - If the task is light, stay concise and efficient
+    - If the task is high_end, be more exhaustive and carefully structured
     - Follow the outline strictly
     - Use the specified tone and target audience
     - Produce a single unified draft in MDX format

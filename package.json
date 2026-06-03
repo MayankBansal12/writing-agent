@@ -14,8 +14,7 @@
 		"build:server": "pnpm --filter server build",
 		"check-types": "pnpm -r check-types",
 		"dev:web": "pnpm --filter web dev",
-		"dev:server": "pnpm --filter server dev",
-		"inngest:dev": "npx inngest-cli@latest dev"
+		"dev:server": "pnpm --filter server dev"
 	},
 	"dependencies": {
 		"dotenv": "^17.2.2",

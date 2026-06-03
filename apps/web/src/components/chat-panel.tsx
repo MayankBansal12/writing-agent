@@ -1,5 +1,6 @@
 "use client";
 
+import { diffLines } from "diff";
 import { ArrowUp, CheckLine, Copy, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
@@ -34,11 +35,14 @@ interface WritingAgentState {
 		tone: string;
 		constraints: string;
 		optional_search_queries?: string[];
-		mode?: "write" | "edit" | "review";
-		steps?: ("write" | "edit" | "review" | "improve")[];
+		mode?: "write" | "edit" | "review" | "research";
+		tasks?: WritingTask[];
 		needs_review?: boolean;
 		needs_improvement?: boolean;
 		edit_scope?: "none" | "small" | "medium" | "large";
+		stop_conditions?: {
+			max_calls?: number;
+		};
 	};
 	draft?: string;
 	review?: {
@@ -49,15 +53,20 @@ interface WritingAgentState {
 		suggested_improvements: string[];
 	};
 	finalDocument?: string;
-	route?: {
-		mode: "write" | "edit" | "review";
-		steps: ("write" | "edit" | "review" | "improve")[];
-		needs_review?: boolean;
-		needs_improvement?: boolean;
-		edit_scope?: "none" | "small" | "medium" | "large";
-	};
-	currentStepIndex?: number;
 }
+
+type TaskStatus = "pending" | "running" | "done" | "failed" | "skipped";
+type TaskType = "research" | "write" | "edit" | "review" | "improve";
+
+type WritingTask = {
+	id: string;
+	type: TaskType;
+	title: string;
+	description?: string;
+	depends_on?: string[];
+	status: TaskStatus;
+	outputs?: Record<string, unknown>;
+};
 
 interface ChatMessage {
 	id: string;
@@ -68,11 +77,14 @@ interface ChatMessage {
 	canReviewDiff?: boolean;
 }
 
+type DiffLineType = "equal" | "add" | "remove" | "empty";
+
 type DiffLine = {
-	type: "equal" | "add" | "remove";
-	text: string;
-	originalIndex?: number;
-	suggestedIndex?: number;
+	id: string;
+	original: string;
+	suggested: string;
+	originalType: DiffLineType;
+	suggestedType: DiffLineType;
 };
 
 type DiffReview = {
@@ -80,6 +92,18 @@ type DiffReview = {
 	suggested: string;
 	diff: DiffLine[];
 };
+
+type StreamEvent =
+	| { event: "plan"; data: { plan: WritingAgentState["plan"] } }
+	| {
+			event: "task_start" | "task_update" | "task_done";
+			data: { task: WritingTask; status: TaskStatus };
+	  }
+	| {
+			event: "final";
+			data: { finalDocument?: string; state: WritingAgentState };
+	  }
+	| { event: "agent_error"; data: { message: string } };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -96,60 +120,121 @@ export function ChatPanel({
 	const [error, setError] = useState<string | null>(null);
 	const [copied, setCopied] = useState<string | null>(null);
 	const [diffReview, setDiffReview] = useState<DiffReview | null>(null);
+	const [streamState, setStreamState] = useState<WritingAgentState | null>(
+		null,
+	);
+	const [streamTasks, setStreamTasks] = useState<WritingTask[]>([]);
 	const promptInputRef = useRef<PromptInputRef>(null);
 
+	const splitDiffLines = (value: string) => {
+		const lines = value.split("\n");
+		if (lines.length > 0 && lines[lines.length - 1] === "") {
+			lines.pop();
+		}
+		return lines;
+	};
+
+	const wrapTextForDiff = (text: string, maxWidth: number) => {
+		const lines = text.split("\n");
+		const wrapped: string[] = [];
+
+		lines.forEach((line) => {
+			if (line === "") {
+				wrapped.push("");
+				return;
+			}
+
+			const tokens = line.match(/\S+|\s+/g) ?? [line];
+			let current = "";
+
+			const pushCurrent = () => {
+				wrapped.push(current.replace(/\s+$/g, ""));
+				current = "";
+			};
+
+			tokens.forEach((token) => {
+				if (token.length > maxWidth) {
+					if (current) {
+						pushCurrent();
+					}
+					for (let i = 0; i < token.length; i += maxWidth) {
+						wrapped.push(token.slice(i, i + maxWidth));
+					}
+					return;
+				}
+
+				if (current.length + token.length <= maxWidth) {
+					current += token;
+					return;
+				}
+
+				pushCurrent();
+				current = token.replace(/^\s+/g, "");
+			});
+
+			if (current) {
+				wrapped.push(current.replace(/\s+$/g, ""));
+			}
+		});
+
+		return wrapped.join("\n");
+	};
+
 	const buildDiff = (original: string, suggested: string): DiffLine[] => {
-		const originalLines = original.split("\n");
-		const suggestedLines = suggested.split("\n");
-		const rows = originalLines.length;
-		const cols = suggestedLines.length;
-		const dp = Array.from({ length: rows + 1 }, () => Array(cols + 1).fill(0));
-
-		for (let i = rows - 1; i >= 0; i -= 1) {
-			for (let j = cols - 1; j >= 0; j -= 1) {
-				dp[i][j] =
-					originalLines[i] === suggestedLines[j]
-						? dp[i + 1][j + 1] + 1
-						: Math.max(dp[i + 1][j], dp[i][j + 1]);
-			}
-		}
-
+		const wrapWidth = 96;
+		const wrappedOriginal = wrapTextForDiff(original, wrapWidth);
+		const wrappedSuggested = wrapTextForDiff(suggested, wrapWidth);
+		const changes = diffLines(wrappedOriginal, wrappedSuggested);
 		const diff: DiffLine[] = [];
-		let i = 0;
-		let j = 0;
+		let pendingRemovals: string[] = [];
+		let pendingAdditions: string[] = [];
+		let lineId = 0;
 
-		while (i < rows && j < cols) {
-			if (originalLines[i] === suggestedLines[j]) {
+		const flushPending = () => {
+			const maxLength = Math.max(
+				pendingRemovals.length,
+				pendingAdditions.length,
+			);
+			for (let i = 0; i < maxLength; i += 1) {
+				const removal = pendingRemovals[i];
+				const addition = pendingAdditions[i];
 				diff.push({
-					type: "equal",
-					text: originalLines[i],
-					originalIndex: i,
-					suggestedIndex: j,
+					id: `diff-${lineId}`,
+					original: removal ?? "",
+					suggested: addition ?? "",
+					originalType: removal !== undefined ? "remove" : "empty",
+					suggestedType: addition !== undefined ? "add" : "empty",
 				});
-				i += 1;
-				j += 1;
-				continue;
+				lineId += 1;
 			}
+			pendingRemovals = [];
+			pendingAdditions = [];
+		};
 
-			if (dp[i + 1][j] >= dp[i][j + 1]) {
-				diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
-				i += 1;
-			} else {
-				diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
-				j += 1;
+		changes.forEach((change) => {
+			const lines = splitDiffLines(change.value);
+			if (change.added) {
+				pendingAdditions.push(...lines);
+				return;
 			}
-		}
+			if (change.removed) {
+				pendingRemovals.push(...lines);
+				return;
+			}
+			flushPending();
+			lines.forEach((line) => {
+				diff.push({
+					id: `diff-${lineId}`,
+					original: line,
+					suggested: line,
+					originalType: "equal",
+					suggestedType: "equal",
+				});
+				lineId += 1;
+			});
+		});
 
-		while (i < rows) {
-			diff.push({ type: "remove", text: originalLines[i], originalIndex: i });
-			i += 1;
-		}
-
-		while (j < cols) {
-			diff.push({ type: "add", text: suggestedLines[j], suggestedIndex: j });
-			j += 1;
-		}
-
+		flushPending();
 		return diff;
 	};
 
@@ -203,6 +288,8 @@ export function ChatPanel({
 		if (!inputValue.trim()) return;
 		setIsLoading(true);
 		setError(null);
+		setStreamState(null);
+		setStreamTasks([]);
 
 		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
@@ -215,7 +302,7 @@ export function ChatPanel({
 		setInputValue("");
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat`, {
+			const initResponse = await fetch(`${API_BASE_URL}/api/chat/stream/init`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -226,51 +313,147 @@ export function ChatPanel({
 				}),
 			});
 
-			if (!response.ok) {
-				const errorData = await response
+			if (!initResponse.ok) {
+				const errorData = await initResponse
 					.json()
-					.catch(() => ({ error: "Failed to send message" }));
+					.catch(() => ({ error: "Failed to initialize stream" }));
 				throw new Error(
-					errorData.error || errorData.message || "Failed to send message",
+					errorData.error || errorData.message || "Failed to initialize stream",
 				);
 			}
 
-			const data = await response.json();
-			console.log("agent data: ", data);
-
-			if (!data) throw Error("No data received");
-
-			const routeSteps = data.state?.route?.steps || [];
-			const isReviewOnly =
-				data.state?.route?.mode === "review" ||
-				(routeSteps.length === 1 && routeSteps[0] === "review");
-			const contentToUse =
-				data.finalDocument || data.state?.finalDocument || data.state?.draft;
-
-			const messageContent = isReviewOnly
-				? formatReviewAsMarkdown(data.state?.review)
-				: contentToUse;
-
-			if (!messageContent) throw Error("No content generated");
-
-			const canReviewDiff = !isReviewOnly;
-
-			const assistantMessage: ChatMessage = {
-				id: (Date.now() + 1).toString(),
-				content: messageContent,
-				role: "assistant",
-				format: "plain",
-				stateData: data.state,
-				canReviewDiff,
+			const { streamId } = (await initResponse.json()) as {
+				streamId: string;
 			};
-			setMessages((prev) => [...prev, assistantMessage]);
+
+			const streamUrl = `${API_BASE_URL}/api/chat/stream?streamId=${encodeURIComponent(
+				streamId,
+			)}`;
+			const eventSource = new EventSource(streamUrl);
+
+			const handleEvent = (payload: MessageEvent) => {
+				if (!payload.data) return;
+				const parsed = JSON.parse(payload.data) as StreamEvent["data"];
+				const event = payload.type as StreamEvent["event"];
+
+				const applyTaskOutputs = (task: WritingTask) => {
+					const outputs = task.outputs;
+					if (!outputs) return;
+					setStreamState((prev) => {
+						const nextState: WritingAgentState = {
+							...(prev || { userPrompt: promptValue }),
+							plan: prev?.plan,
+						};
+						if (typeof outputs.draft === "string") {
+							nextState.draft = outputs.draft;
+						}
+						if (outputs.review) {
+							nextState.review = outputs.review as WritingAgentState["review"];
+						}
+						if (typeof outputs.finalDocument === "string") {
+							nextState.finalDocument = outputs.finalDocument;
+						}
+						return nextState;
+					});
+				};
+
+				switch (event) {
+					case "plan": {
+						const plan = (parsed as { plan: WritingAgentState["plan"] }).plan;
+						setStreamState((prev) => ({
+							...(prev || { userPrompt: promptValue }),
+							plan,
+						}));
+						setStreamTasks((plan?.tasks || []) as WritingTask[]);
+						break;
+					}
+					case "task_start":
+					case "task_update":
+					case "task_done": {
+						const task = (parsed as { task: WritingTask }).task;
+						setStreamTasks((prev) => {
+							const existing = prev.find((item) => item.id === task.id);
+							if (existing) {
+								return prev.map((item) => (item.id === task.id ? task : item));
+							}
+							return [...prev, task];
+						});
+						applyTaskOutputs(task);
+						break;
+					}
+					case "final": {
+						const finalPayload = parsed as {
+							finalDocument?: string;
+							state: WritingAgentState;
+						};
+						const finalState = finalPayload.state;
+						setStreamState(finalState);
+
+						const isReviewOnly =
+							finalState.plan?.mode === "review" && !finalPayload.finalDocument;
+						const contentToUse =
+							finalPayload.finalDocument ||
+							finalState.finalDocument ||
+							finalState.draft;
+
+						const messageContent = isReviewOnly
+							? formatReviewAsMarkdown(finalState.review)
+							: contentToUse;
+
+						if (!messageContent) break;
+						const canReviewDiff = !isReviewOnly;
+						const assistantMessage: ChatMessage = {
+							id: (Date.now() + 1).toString(),
+							content: messageContent,
+							role: "assistant",
+							format: "plain",
+							stateData: finalState,
+							canReviewDiff,
+						};
+						setMessages((prev) => [...prev, assistantMessage]);
+						setIsLoading(false);
+						eventSource.close();
+						break;
+					}
+					case "agent_error": {
+						const err = parsed as { message: string };
+						setError(err.message);
+						setIsLoading(false);
+						eventSource.close();
+						break;
+					}
+					default:
+						break;
+				}
+			};
+
+			eventSource.addEventListener("plan", handleEvent);
+			eventSource.addEventListener("task_start", handleEvent);
+			eventSource.addEventListener("task_update", handleEvent);
+			eventSource.addEventListener("task_done", handleEvent);
+			eventSource.addEventListener("final", handleEvent);
+			eventSource.addEventListener("agent_error", handleEvent);
+			eventSource.addEventListener("error", () => {
+				setError("Streaming connection failed");
+				setIsLoading(false);
+				eventSource.close();
+			});
+
+			eventSource.addEventListener("done", () => {
+				setIsLoading(false);
+				eventSource.close();
+			});
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err?.message : "Error!";
 			setError(errorMessage);
-		} finally {
 			setIsLoading(false);
 		}
 	};
+
+	const activeState = streamState || undefined;
+	const activeTasks = streamTasks.length
+		? streamTasks
+		: activeState?.plan?.tasks || [];
 
 	return (
 		<Card className="flex h-full flex-col">
@@ -385,7 +568,13 @@ export function ChatPanel({
 						</div>
 					)}
 
-					{isLoading && <ChainOfThoughtReasoning isLoading={isLoading} />}
+					{isLoading && (
+						<ChainOfThoughtReasoning
+							isLoading={isLoading}
+							stateData={activeState}
+							streamTasks={activeTasks}
+						/>
+					)}
 					{error && (
 						<SystemMessage variant="error" fill>
 							Unable to generate response, seems like a error from our side,
@@ -443,40 +632,37 @@ export function ChatPanel({
 							</div>
 
 							<div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
-								<div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-muted/30">
+								<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-muted/30">
 									<div className="sticky top-0 grid border-b border-border bg-card px-4 py-3 text-sm font-medium md:grid-cols-2">
 										<div>Original</div>
 										<div>Suggested Fix</div>
 									</div>
-									<div className="divide-y divide-border font-mono text-sm leading-6">
-										{diffReview.diff.map((line, index) => (
-											<div
-												key={`${line.originalIndex ?? "o"}-${line.suggestedIndex ?? "s"}-${index}`}
-												className="grid md:grid-cols-2"
-											>
+									<div className="min-h-0 flex-1 overflow-y-auto divide-y divide-border font-mono text-sm leading-6">
+										{diffReview.diff.map((line) => (
+											<div key={line.id} className="grid md:grid-cols-2">
 												<div
 													className={cn(
 														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
-														line.type === "remove"
+														line.originalType === "remove"
 															? "bg-red-500/15 text-red-200 line-through"
-															: line.type === "equal"
+															: line.originalType === "equal"
 																? "text-foreground"
 																: "text-muted-foreground",
 													)}
 												>
-													{line.type === "add" ? "" : line.text || " "}
+													{line.original || " "}
 												</div>
 												<div
 													className={cn(
 														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
-														line.type === "add"
+														line.suggestedType === "add"
 															? "bg-emerald-500/15 text-emerald-200"
-															: line.type === "equal"
+															: line.suggestedType === "equal"
 																? "text-foreground"
 																: "text-muted-foreground",
 													)}
 												>
-													{line.type === "remove" ? "" : line.text || " "}
+													{line.suggested || " "}
 												</div>
 											</div>
 										))}

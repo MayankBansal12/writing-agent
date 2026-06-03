@@ -4,12 +4,18 @@ export function createReviewPrompt(
 	plan: WritingPlan,
 	draft: string,
 	currentDocument?: string,
+	modelHint?: string,
+	difficulty?: string,
 ): string {
 	const documentContext = currentDocument?.trim()
 		? `\nCURRENT DOCUMENT (for comparison):\n${currentDocument}\n`
 		: "";
 
 	return `You are the Review Agent. Critically evaluate the draft based on the plan. Your task is to review the provided text and identify issues, especially signs of AI-generated or low-quality writing.${documentContext}
+    MODEL ROUTING:
+    - Selected model: ${modelHint || "unspecified"}
+    - Task difficulty: ${difficulty || "unspecified"}
+
     PLAN CONTEXT:
     - Intent: ${plan?.intent}
     - Requirements: ${plan?.requirements}
@@ -21,6 +27,8 @@ export function createReviewPrompt(
     ${draft}
 
     INSTRUCTIONS:
+    - If the task is light, focus on the most important and actionable issues only
+    - If the task is high_end, be more critical and thorough
     - Identify issues in clarity, structure, tone, completeness, and factual gaps
     - Check MDX formatting correctness and code, mermaid syntax (if there)
     - Mermaid diagrams are ALLOWED and ENCOURAGED - prefer mermaid over ascii art

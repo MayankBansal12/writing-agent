@@ -1,4 +1,10 @@
-import { MessageSquareQuote, Pencil, Search, Target } from "lucide-react";
+import {
+	FlaskConical,
+	MessageSquareQuote,
+	Pencil,
+	Search,
+	Target,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import {
@@ -20,11 +26,14 @@ interface WritingAgentState {
 		tone: string;
 		constraints: string;
 		optional_search_queries?: string[];
-		mode?: "write" | "edit" | "review";
-		steps?: ("write" | "edit" | "review" | "improve")[];
+		mode?: "write" | "edit" | "review" | "research";
+		tasks?: WritingTask[];
 		needs_review?: boolean;
 		needs_improvement?: boolean;
 		edit_scope?: "none" | "small" | "medium" | "large";
+		stop_conditions?: {
+			max_calls?: number;
+		};
 	};
 	draft?: string;
 	review?: {
@@ -35,37 +44,57 @@ interface WritingAgentState {
 		suggested_improvements: string[];
 	};
 	finalDocument?: string;
-	route?: {
-		mode: "write" | "edit" | "review";
-		steps: ("write" | "edit" | "review" | "improve")[];
-		needs_review?: boolean;
-		needs_improvement?: boolean;
-		edit_scope?: "none" | "small" | "medium" | "large";
-	};
-	currentStepIndex?: number;
 }
+
+type TaskStatus = "pending" | "running" | "done" | "failed" | "skipped";
+type TaskType = "research" | "write" | "edit" | "review" | "improve";
+
+type WritingTask = {
+	id: string;
+	type: TaskType;
+	title: string;
+	description?: string;
+	depends_on?: string[];
+	status: TaskStatus;
+	outputs?: Record<string, unknown>;
+};
+
+type TimelineStep =
+	| { key: string; type: "planning" }
+	| { key: string; type: TaskType; task: WritingTask };
 
 interface ChainOfThoughtReasoningProps {
 	isLoading?: boolean;
 	stepItems?: (React.ReactNode | string)[][];
 	stateData?: WritingAgentState;
+	streamTasks?: WritingTask[];
 	animated?: boolean;
 }
 
-const stepTitles = {
+const stepTitles: Record<TaskType | "planning", string> = {
 	planning: "Planning next moves: Understanding the requirements",
+	research: "Researching: Gathering sources and notes",
 	write: "Writing a draft: Implementing the plan",
 	edit: "Editing the document: Applying requested changes",
 	review: "Reviewing the draft: Generating correction pointers",
 	improve: "Finalizing the draft: Implementing targeted improvements",
 };
 
-const stepIcons = {
+const stepIcons: Record<TaskType | "planning", React.ReactNode> = {
 	planning: <Search className="size-4" />,
+	research: <FlaskConical className="size-4" />,
 	write: <Pencil className="size-4" />,
 	edit: <Pencil className="size-4" />,
 	review: <MessageSquareQuote className="size-4" />,
 	improve: <Target className="size-4" />,
+};
+
+const statusStyles: Record<TaskStatus, string> = {
+	pending: "text-muted-foreground",
+	running: "text-primary",
+	done: "text-emerald-500",
+	failed: "text-red-500",
+	skipped: "text-muted-foreground",
 };
 
 function formatPlan(plan: WritingAgentState["plan"]): React.ReactNode {
@@ -173,35 +202,45 @@ export function ChainOfThoughtReasoning({
 	isLoading = false,
 	stepItems = [],
 	stateData,
+	streamTasks = [],
 	animated = true,
 }: ChainOfThoughtReasoningProps) {
 	const [visibleSteps, setVisibleSteps] = useState<number[]>([]);
-	const routeSteps = stateData?.route?.steps || [];
-	const defaultStepOrder = ["planning", "write", "review", "improve"] as const;
-	const stepOrder = routeSteps.length
-		? (["planning", ...routeSteps] as const)
-		: defaultStepOrder;
+	const planTasks = streamTasks.length
+		? streamTasks
+		: stateData?.plan?.tasks || [];
+	const steps: TimelineStep[] = [
+		{ key: "planning", type: "planning" as const },
+		...planTasks.map((task) => ({
+			key: task.id,
+			type: task.type as TaskType,
+			task,
+		})),
+	];
 
-	const stateStepItems: (React.ReactNode | string)[][] = stateData
-		? stepOrder.map((step) => {
-				switch (step) {
-					case "planning":
-						return stateData.plan ? [formatPlan(stateData.plan)] : [];
-					case "write":
-					case "edit":
-						return stateData.draft ? [stateData.draft] : [];
-					case "review":
-						return stateData.review ? [formatReview(stateData.review)] : [];
-					case "improve":
-						return stateData.finalDocument ? [stateData.finalDocument] : [];
-					default:
-						return [];
-				}
-			})
-		: [];
+	const stateStepItems: (React.ReactNode | string)[][] = [
+		stateData?.plan ? [formatPlan(stateData.plan)] : [],
+		...planTasks.map((task) => {
+			switch (task.type) {
+				case "write":
+				case "edit":
+					return stateData?.draft ? [stateData.draft] : [];
+				case "review":
+					return stateData?.review ? [formatReview(stateData.review)] : [];
+				case "improve":
+					return stateData?.finalDocument ? [stateData.finalDocument] : [];
+				case "research":
+					return task.outputs?.researchSummary
+						? [String(task.outputs.researchSummary)]
+						: [];
+				default:
+					return [];
+			}
+		}),
+	];
 
 	const itemsToUse = stateData ? stateStepItems : stepItems;
-	const stepCount = Math.max(stepOrder.length, itemsToUse?.length || 0);
+	const stepCount = Math.max(steps.length, itemsToUse?.length || 0);
 
 	useEffect(() => {
 		if (!animated || !isLoading) {
@@ -230,19 +269,24 @@ export function ChainOfThoughtReasoning({
 			<ChainOfThought>
 				{animated ? (
 					<AnimatePresence>
-						{stepOrder.map((stepKey, index) => {
+						{steps.map((step, index) => {
 							if (!visibleSteps.includes(index)) return null;
 
 							const items = itemsToUse[index] || [];
 							const hasItems = items?.length > 0;
 							const title =
-								stepTitles[stepKey] || "Generating Final Response...";
-							const icon = stepIcons[stepKey] || <Target className="size-4" />;
+								"task" in step
+									? step.task.title
+									: stepTitles[step.type] || "Generating Final Response...";
+							const icon = stepIcons[step.type] || (
+								<Target className="size-4" />
+							);
 							let itemCounter = 0;
+							const taskMeta = "task" in step ? step.task : undefined;
 
 							return (
 								<motion.div
-									key={stepKey}
+									key={step.key}
 									initial={{ opacity: 0, y: 10 }}
 									animate={{ opacity: 1, y: 0 }}
 									exit={{ opacity: 0, y: -10 }}
@@ -251,14 +295,21 @@ export function ChainOfThoughtReasoning({
 									<ChainOfThoughtStep>
 										<ChainOfThoughtTrigger leftIcon={icon}>
 											<TextShimmer>{title}</TextShimmer>
+											{taskMeta && (
+												<span
+													className={`ml-2 text-xs ${statusStyles[taskMeta.status]}`}
+												>
+													{taskMeta.status}
+												</span>
+											)}
 										</ChainOfThoughtTrigger>
 										{hasItems ? (
 											<ChainOfThoughtContent>
 												{items?.map((item) => {
 													const key =
 														typeof item === "string"
-															? `${stepKey}-${itemCounter++}-${item.slice(0, 12)}`
-															: `${stepKey}-item-${itemCounter++}`;
+															? `${step.key}-${itemCounter++}-${item.slice(0, 12)}`
+															: `${step.key}-item-${itemCounter++}`;
 													return (
 														<ChainOfThoughtItem key={key}>
 															{item}
@@ -269,7 +320,9 @@ export function ChainOfThoughtReasoning({
 										) : (
 											<ChainOfThoughtContent>
 												<ChainOfThoughtItem>
-													Generating Please hold on...
+													{taskMeta?.status === "running"
+														? "Working..."
+														: "Queued"}
 												</ChainOfThoughtItem>
 											</ChainOfThoughtContent>
 										)}
@@ -280,28 +333,40 @@ export function ChainOfThoughtReasoning({
 					</AnimatePresence>
 				) : (
 					<>
-						{stepOrder.map((stepKey, index) => {
+						{steps.map((step, index) => {
 							const items = itemsToUse[index] || [];
 							const hasItems = items?.length > 0;
 							const title =
-								stepTitles[stepKey] || "Generating Final Response...";
-							const icon = stepIcons[stepKey] || <Target className="size-4" />;
+								"task" in step
+									? step.task.title
+									: stepTitles[step.type] || "Generating Final Response...";
+							const icon = stepIcons[step.type] || (
+								<Target className="size-4" />
+							);
 							let itemCounter = 0;
+							const taskMeta = "task" in step ? step.task : undefined;
 
 							// Only show steps that have data
 							if (!hasItems) return null;
 
 							return (
-								<ChainOfThoughtStep key={stepKey}>
+								<ChainOfThoughtStep key={step.key}>
 									<ChainOfThoughtTrigger leftIcon={icon}>
 										{title}
+										{taskMeta && (
+											<span
+												className={`ml-2 text-xs ${statusStyles[taskMeta.status]}`}
+											>
+												{taskMeta.status}
+											</span>
+										)}
 									</ChainOfThoughtTrigger>
 									<ChainOfThoughtContent>
 										{items?.map((item) => {
 											const key =
 												typeof item === "string"
-													? `${stepKey}-${itemCounter++}-${item.slice(0, 12)}`
-													: `${stepKey}-item-${itemCounter++}`;
+													? `${step.key}-${itemCounter++}-${item.slice(0, 12)}`
+													: `${step.key}-item-${itemCounter++}`;
 											return (
 												<ChainOfThoughtItem key={key}>
 													{item}
