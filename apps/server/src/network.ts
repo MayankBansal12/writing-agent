@@ -38,10 +38,7 @@ type StreamEvent =
 
 type StreamHandler = (event: StreamEvent) => void;
 
-type WorkflowLogger = Pick<
-	Console,
-	"info" | "warn" | "error"
->;
+type WorkflowLogger = Pick<Console, "info" | "warn" | "error">;
 
 interface WorkflowContext {
 	streamId?: string;
@@ -72,7 +69,7 @@ const extractTextContent = (content: unknown): string => {
 		})
 		.filter(Boolean)
 		.join("\n")
-	.trim();
+		.trim();
 };
 
 const snippet = (value: string, length = 500) =>
@@ -128,7 +125,10 @@ const modelRoutes = {
 		light: resolveModel("gemma-4-31B-it", "SAMBA_MODEL_REVIEW_LIGHT"),
 	},
 	improvement: {
-		high_end: resolveModel("gemma-3-12b-it", "SAMBA_MODEL_IMPROVEMENT_HIGH_END"),
+		high_end: resolveModel(
+			"gemma-3-12b-it",
+			"SAMBA_MODEL_IMPROVEMENT_HIGH_END",
+		),
 		light: resolveModel("gpt-oss-120b", "SAMBA_MODEL_IMPROVEMENT_LIGHT"),
 	},
 	research: {
@@ -168,7 +168,8 @@ const resolveModelRouting = (routing?: ModelRoutingPlan): ModelRoutingPlan => {
 
 	return {
 		planning: {
-			primary: routing?.planning?.primary || defaultModelRouting.planning.primary,
+			primary:
+				routing?.planning?.primary || defaultModelRouting.planning.primary,
 			fallback:
 				routing?.planning?.fallback || defaultModelRouting.planning.fallback,
 		},
@@ -193,7 +194,8 @@ const resolveModelRouting = (routing?: ModelRoutingPlan): ModelRoutingPlan => {
 			),
 		},
 		research: {
-			primary: routing?.research?.primary || defaultModelRouting.research.primary,
+			primary:
+				routing?.research?.primary || defaultModelRouting.research.primary,
 			fallback:
 				routing?.research?.fallback || defaultModelRouting.research.fallback,
 		},
@@ -233,7 +235,11 @@ const resolveTaskRouting = (
 	if (task.type === "review") {
 		return routing.review[inferredDifficulty];
 	}
-	if (task.type === "improve" || task.type === "edit" || task.type === "write") {
+	if (
+		task.type === "improve" ||
+		task.type === "edit" ||
+		task.type === "write"
+	) {
 		return routing.writing[inferredDifficulty];
 	}
 	return {
@@ -450,9 +456,7 @@ export async function runWritingWorkflow(
 	onEvent?: StreamHandler,
 ): Promise<OrchestratorResult> {
 	const context =
-		typeof contextOrOnEvent === "function"
-			? undefined
-			: contextOrOnEvent;
+		typeof contextOrOnEvent === "function" ? undefined : contextOrOnEvent;
 	const streamHandler =
 		typeof contextOrOnEvent === "function" ? contextOrOnEvent : onEvent;
 	const log = context?.log;
@@ -827,7 +831,6 @@ export async function runWritingWorkflow(
 				data: { task: readyTask, status: "failed" },
 			});
 			if (callCount >= maxCalls) break;
-			continue;
 		}
 	}
 

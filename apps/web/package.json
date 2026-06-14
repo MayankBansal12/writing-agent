@@ -8,6 +8,8 @@
 		"start": "next start"
 	},
 	"dependencies": {
+		"@excalidraw/excalidraw": "^0.18.1",
+		"@excalidraw/mermaid-to-excalidraw": "^2.2.2",
 		"@mdx-js/react": "^3.1.1",
 		"@radix-ui/react-avatar": "^1.1.11",
 		"@radix-ui/react-collapsible": "^1.1.12",
