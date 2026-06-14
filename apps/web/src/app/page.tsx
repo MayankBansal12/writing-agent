@@ -9,9 +9,7 @@ import {
 } from "react-resizable-panels";
 import { ChatPanel } from "@/components/chat-panel";
 import { DocumentPanel } from "@/components/document-panel";
-
-const welcomeText =
-	"# Welcome to Wavmo \n\n An AI Agent that helps you write better documents. Get started using the Agent Chat on the right side.";
+import { welcomeText } from "@/lib/constants/welcome-text";
 
 export default function Home() {
 	const [isChatOpen, setIsChatOpen] = useState(true);

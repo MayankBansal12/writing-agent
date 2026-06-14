@@ -2,67 +2,20 @@
 
 import { cn } from "@/lib/utils";
 import "katex/dist/katex.min.css";
-import { useTheme } from "next-themes";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { CodeBlock, CodeBlockCode } from "./code-block";
+import { MermaidDiagram } from "./mermaid-diagram";
 
 export type MarkdownProps = {
 	children: string;
 	className?: string;
 	components?: Partial<Components>;
 };
-
-function MermaidDiagram({ code }: { code: string }) {
-	const ref = useRef<HTMLDivElement>(null);
-	const [error, setError] = useState<string | null>(null);
-	const { resolvedTheme } = useTheme();
-
-	useEffect(() => {
-		if (!ref.current || !code) return;
-
-		const renderDiagram = async () => {
-			const { default: mermaid } = await import("mermaid");
-
-			mermaid.initialize({
-				startOnLoad: false,
-				theme: resolvedTheme === "light" ? "base" : "dark",
-				securityLevel: "strict",
-			});
-
-			ref.current!.innerHTML = "";
-
-			try {
-				await mermaid.parse(code);
-
-				const id = `mermaid-${crypto.randomUUID()}`;
-				const { svg } = await mermaid.render(id, code);
-
-				ref.current!.innerHTML = svg;
-				setError(null);
-			} catch (err) {
-				console.error("Mermaid syntax error:", err);
-				setError("Invalid diagram syntax");
-				ref.current!.innerHTML = "";
-			}
-		};
-
-		renderDiagram();
-	}, [code, resolvedTheme]);
-
-	return (
-		<div
-			ref={ref}
-			className="mb-4 flex items-center justify-center rounded-xl border border-border bg-card p-4"
-		>
-			{error && <span className="text-destructive text-sm">{error}</span>}
-		</div>
-	);
-}
 
 const DEFAULT_COMPONENTS: Partial<Components> = {
 	h1: ({ children }) => (

@@ -70,7 +70,7 @@ export function createWritingPrompt(
     - Inline math: $x^2 + y^2$
     - Block math: 
     $$
-    \int_0^1 x^2 \, dx
+    int_0^1 x^2 , dx
     $$
 
     #### Generate mermaid diagrams where necessary: use mermaid after the three backticks for diagram and code language like js, python to style code accordingly

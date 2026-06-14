@@ -615,7 +615,7 @@ export function ChatPanel({
 				{diffReview && (
 					<div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
 						<div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
-							<div className="flex items-start justify-between border-b border-border px-6 py-5">
+							<div className="flex items-start justify-between border-border border-b px-6 py-5">
 								<div>
 									<h3 className="font-semibold text-xl">Review AI Changes</h3>
 									<p className="mt-1 text-muted-foreground text-sm">
@@ -633,16 +633,16 @@ export function ChatPanel({
 
 							<div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
 								<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-muted/30">
-									<div className="sticky top-0 grid border-b border-border bg-card px-4 py-3 text-sm font-medium md:grid-cols-2">
+									<div className="sticky top-0 grid border-border border-b bg-card px-4 py-3 font-medium text-sm md:grid-cols-2">
 										<div>Original</div>
 										<div>Suggested Fix</div>
 									</div>
-									<div className="min-h-0 flex-1 overflow-y-auto divide-y divide-border font-mono text-sm leading-6">
+									<div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6">
 										{diffReview.diff.map((line) => (
 											<div key={line.id} className="grid md:grid-cols-2">
 												<div
 													className={cn(
-														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														"min-h-8 whitespace-pre-wrap border-border px-4 py-2",
 														line.originalType === "remove"
 															? "bg-red-500/15 text-red-200 line-through"
 															: line.originalType === "equal"
@@ -654,7 +654,7 @@ export function ChatPanel({
 												</div>
 												<div
 													className={cn(
-														"min-h-8 border-border px-4 py-2 whitespace-pre-wrap",
+														"min-h-8 whitespace-pre-wrap border-border px-4 py-2",
 														line.suggestedType === "add"
 															? "bg-emerald-500/15 text-emerald-200"
 															: line.suggestedType === "equal"
@@ -670,7 +670,7 @@ export function ChatPanel({
 								</div>
 							</div>
 
-							<div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
+							<div className="flex items-center justify-between gap-3 border-border border-t px-6 py-4">
 								<p className="text-muted-foreground text-sm">
 									Apply will replace the current document with the suggested
 									version.
