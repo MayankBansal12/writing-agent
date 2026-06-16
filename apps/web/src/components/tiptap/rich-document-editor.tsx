@@ -10,6 +10,7 @@ import { common, createLowlight } from "lowlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef } from "react";
 import { MathInline, MathBlock } from "./extensions/math-passthrough";
+import { MermaidBlock } from "./extensions/mermaid-block";
 import { SlashCommandMenu } from "./extensions/slash-command-menu";
 import "./styles/editor.css";
 
@@ -30,6 +31,7 @@ export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProp
 				heading: { levels: [1, 2, 3] },
 			}),
 			CodeBlockLowlight.configure({ lowlight }),
+			MermaidBlock,
 			Markdown.configure({
 				html: true,
 				transformPastedText: true,

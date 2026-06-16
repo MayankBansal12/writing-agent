@@ -114,7 +114,7 @@ export function MermaidDiagram({ code }: { code: string }) {
 	}, [code, resolvedTheme]);
 
 	return (
-		<div ref={ref} className="mb-4 block w-full overflow-hidden p-1">
+		<div ref={ref} className="mermaid-diagram-container">
 			{error && <span className="text-destructive text-sm">{error}</span>}
 		</div>
 	);

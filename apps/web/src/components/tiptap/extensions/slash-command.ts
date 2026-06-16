@@ -70,4 +70,20 @@ export const defaultSlashCommands: SlashCommandItem[] = [
 			editor.chain().focus().deleteRange(range).setHorizontalRule().run();
 		},
 	},
+	{
+		title: "Diagram",
+		description: "Insert a mermaid diagram",
+		icon: "\u2B22",
+		command: ({ editor, range }) => {
+			editor
+				.chain()
+				.focus()
+				.deleteRange(range)
+				.insertContent({
+					type: "mermaidBlock",
+					attrs: { code: "graph TD\n  A --> B" },
+				})
+				.run();
+		},
+	},
 ];

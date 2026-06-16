@@ -185,6 +185,20 @@
 	white-space: pre-wrap;
 }
 
+.rich-editor-body .mermaid-block-wrapper {
+	max-width: 50%;
+	margin: 0.75rem auto;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	overflow: hidden;
+	background-color: var(--card);
+}
+
+.rich-editor-body .mermaid-block-wrapper .mermaid-diagram-container {
+	padding: 0.5rem;
+	overflow: hidden;
+}
+
 /* --- Slash Command Menu --- */
 
 .slash-command-menu {
