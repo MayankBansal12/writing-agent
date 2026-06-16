@@ -11,6 +11,7 @@ import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef } from "react";
 import { MathInline, MathBlock } from "./extensions/math-passthrough";
 import { MermaidBlock } from "./extensions/mermaid-block";
+import { MermaidInputRule } from "./extensions/mermaid-input-rule";
 import { SlashCommandMenu } from "./extensions/slash-command-menu";
 import "./styles/editor.css";
 
@@ -30,6 +31,7 @@ export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProp
 				codeBlock: false,
 				heading: { levels: [1, 2, 3] },
 			}),
+			MermaidInputRule,
 			CodeBlockLowlight.configure({ lowlight }),
 			MermaidBlock,
 			Markdown.configure({

@@ -186,7 +186,6 @@
 }
 
 .rich-editor-body .mermaid-block-wrapper {
-	max-width: 50%;
 	margin: 0.75rem auto;
 	border: 1px solid var(--border);
 	border-radius: 0.5rem;
@@ -197,6 +196,193 @@
 .rich-editor-body .mermaid-block-wrapper .mermaid-diagram-container {
 	padding: 0.5rem;
 	overflow: hidden;
+}
+
+.rich-editor-body .mermaid-block-viewing {
+	position: relative;
+}
+
+.rich-editor-body .mermaid-edit-overlay-btn {
+	position: absolute;
+	top: 0.375rem;
+	right: 0.375rem;
+	opacity: 0;
+	transition: opacity 0.15s;
+	font-size: 0.75rem;
+	padding: 0.25rem 0.5rem;
+	border-radius: 0.375rem;
+	border: 1px solid var(--border);
+	background-color: var(--card);
+	color: var(--muted-foreground);
+	cursor: pointer;
+	z-index: 1;
+}
+
+.rich-editor-body .mermaid-block-viewing:hover .mermaid-edit-overlay-btn {
+	opacity: 1;
+}
+
+.rich-editor-body .mermaid-width-label {
+	position: absolute;
+	bottom: 0.25rem;
+	right: 0.375rem;
+	font-size: 0.625rem;
+	color: var(--muted-foreground);
+	opacity: 0;
+	transition: opacity 0.15s;
+	font-family: var(--font-mono);
+}
+
+.rich-editor-body .mermaid-block-viewing:hover .mermaid-width-label {
+	opacity: 0.7;
+}
+
+/* --- Mermaid Editor Dialog --- */
+
+.mermaid-dialog-content {
+	max-width: 90vw !important;
+	width: 90vw;
+	height: 85vh;
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	gap: 0;
+	border-radius: 0.75rem;
+}
+
+.mermaid-dialog-content > button[data-slot="dialog-close"] {
+	z-index: 10;
+}
+
+.mermaid-dialog-content header {
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.mermaid-dialog-body {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.mermaid-dialog-preview {
+	display: flex;
+	flex-direction: column;
+	padding: 1rem;
+	overflow: auto;
+	border-right: 1px solid var(--border);
+	background-color: var(--card);
+	justify-content: center;
+	align-items: center;
+	min-height: 0;
+}
+
+.mermaid-dialog-preview .mermaid-diagram-container {
+	padding: 0;
+	overflow: hidden;
+	width: 100%;
+}
+
+.mermaid-dialog-error {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	padding: 0.75rem;
+	margin-top: 1rem;
+	border-radius: 0.5rem;
+	background-color: var(--destructive)/10;
+	border: 1px solid var(--destructive)/20;
+}
+
+.mermaid-dialog-editor {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.mermaid-dialog-textarea {
+	flex: 1;
+	width: 100%;
+	padding: 1rem;
+	border: none;
+	background-color: transparent;
+	color: var(--foreground);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	line-height: 1.6;
+	resize: none;
+	outline: none;
+	min-height: 0;
+}
+
+.mermaid-dialog-textarea::placeholder {
+	color: var(--muted-foreground);
+}
+
+.mermaid-dialog-controls {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.75rem 1rem;
+	border-top: 1px solid var(--border);
+	background-color: var(--muted);
+	gap: 0.5rem;
+}
+
+.mermaid-dialog-width-label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
+}
+
+.mermaid-dialog-width-select {
+	font-size: 0.75rem;
+	padding: 0.25rem 0.375rem;
+	border-radius: 0.375rem;
+	border: 1px solid var(--border);
+	background-color: var(--card);
+	color: var(--foreground);
+	cursor: pointer;
+	outline: none;
+	font-family: var(--font-mono);
+}
+
+.mermaid-dialog-actions {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.mermaid-dialog-btn {
+	font-size: 0.75rem;
+	padding: 0.375rem 0.875rem;
+	border-radius: 0.375rem;
+	cursor: pointer;
+	border: 1px solid var(--border);
+	transition: background-color 0.1s;
+}
+
+.mermaid-dialog-btn-cancel {
+	background-color: transparent;
+	color: var(--muted-foreground);
+}
+
+.mermaid-dialog-btn-cancel:hover {
+	background-color: var(--accent);
+	color: var(--foreground);
+}
+
+.mermaid-dialog-btn-save {
+	background-color: var(--primary);
+	color: var(--primary-foreground);
+	border-color: var(--primary);
+}
+
+.mermaid-dialog-btn-save:hover {
+	opacity: 0.9;
 }
 
 /* --- Slash Command Menu --- */

@@ -3,14 +3,50 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { useCallback, useEffect, useState } from "react";
 import { MermaidDiagram } from "../../ui/mermaid-diagram";
+import { MermaidEditorDialog } from "../../ui/mermaid-editor-dialog";
 
-function MermaidBlockView({ node }: NodeViewProps) {
+function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 	const code = node.attrs.code ?? "";
+	const width = node.attrs.width ?? "50%";
+	const [dialogOpen, setDialogOpen] = useState(false);
+
+	useEffect(() => {
+		if (!code) {
+			setDialogOpen(true);
+		}
+	}, []);
+
+	const handleSave = useCallback(
+		(newCode: string, newWidth: string) => {
+			updateAttributes({ code: newCode, width: newWidth });
+		},
+		[updateAttributes],
+	);
 
 	return (
-		<NodeViewWrapper as="div" className="mermaid-block-wrapper">
+		<NodeViewWrapper
+			as="div"
+			className="mermaid-block-wrapper mermaid-block-viewing"
+			style={{ maxWidth: width }}
+		>
 			<MermaidDiagram code={code} />
+			<button
+				type="button"
+				className="mermaid-edit-overlay-btn"
+				onClick={() => setDialogOpen(true)}
+			>
+				Edit
+			</button>
+			<span className="mermaid-width-label">{width}</span>
+			<MermaidEditorDialog
+				open={dialogOpen}
+				code={code}
+				width={width}
+				onSave={handleSave}
+				onOpenChange={setDialogOpen}
+			/>
 		</NodeViewWrapper>
 	);
 }
@@ -25,6 +61,10 @@ export const MermaidBlock = Node.create({
 		return {
 			code: {
 				default: "",
+			},
+			width: {
+				default: "50%",
+				rendered: false,
 			},
 		};
 	},

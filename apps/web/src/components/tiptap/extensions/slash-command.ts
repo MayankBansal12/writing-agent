@@ -81,7 +81,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
 				.deleteRange(range)
 				.insertContent({
 					type: "mermaidBlock",
-					attrs: { code: "graph TD\n  A --> B" },
+					attrs: { code: "", width: "50%" },
 				})
 				.run();
 		},
