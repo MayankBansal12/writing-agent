@@ -1,0 +1,269 @@
+.rich-editor-wrapper {
+	position: relative;
+	height: 100%;
+	width: 100%;
+}
+
+.rich-editor-content {
+	height: 100%;
+	overflow-y: auto;
+}
+
+.rich-editor-content .tiptap {
+	outline: none;
+	min-height: 100%;
+	padding: 0;
+}
+
+.rich-editor-body {
+	min-height: 100%;
+	font-size: 0.875rem;
+	line-height: 1.7;
+}
+
+.rich-editor-body h1 {
+	font-size: 1.875rem;
+	font-weight: 700;
+	margin-top: 1rem;
+	margin-bottom: 0.5rem;
+	line-height: 1.2;
+}
+
+.rich-editor-body h2 {
+	font-size: 1.5rem;
+	font-weight: 600;
+	margin-top: 0.75rem;
+	margin-bottom: 0.5rem;
+	line-height: 1.3;
+}
+
+.rich-editor-body h3 {
+	font-size: 1.25rem;
+	font-weight: 600;
+	margin-top: 0.5rem;
+	margin-bottom: 0.375rem;
+	line-height: 1.4;
+}
+
+.rich-editor-body p {
+	margin-bottom: 0.75rem;
+}
+
+.rich-editor-body p:last-child {
+	margin-bottom: 0;
+}
+
+.rich-editor-body ul {
+	list-style-type: disc;
+	padding-left: 1.5rem;
+	margin-bottom: 0.75rem;
+}
+
+.rich-editor-body ol {
+	list-style-type: decimal;
+	padding-left: 1.5rem;
+	margin-bottom: 0.75rem;
+}
+
+.rich-editor-body li {
+	margin-top: 0.25rem;
+}
+
+.rich-editor-body li > p {
+	margin-bottom: 0.25rem;
+}
+
+.rich-editor-body blockquote {
+	border-left: 4px solid var(--muted-foreground);
+	padding-left: 1rem;
+	font-style: italic;
+	margin: 1rem 0;
+}
+
+.rich-editor-body code:not(pre code) {
+	background-color: var(--accent);
+	color: var(--accent-foreground);
+	padding: 0.125rem 0.375rem;
+	border-radius: 0.25rem;
+	font-size: 0.85em;
+	font-family: var(--font-mono);
+}
+
+.rich-editor-body pre {
+	background-color: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	padding: 1rem;
+	margin-bottom: 0.75rem;
+	overflow-x: auto;
+	font-size: 0.8125rem;
+}
+
+.rich-editor-body pre code {
+	background: none;
+	padding: 0;
+	border-radius: 0;
+	font-size: inherit;
+	color: inherit;
+}
+
+.rich-editor-body a {
+	color: var(--primary);
+	text-decoration: underline;
+}
+
+.rich-editor-body a:hover {
+	opacity: 0.8;
+}
+
+.rich-editor-body hr {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 1.5rem 0;
+}
+
+.rich-editor-body table {
+	border-collapse: collapse;
+	width: 100%;
+	margin-bottom: 0.75rem;
+}
+
+.rich-editor-body th,
+.rich-editor-body td {
+	border: 1px solid var(--border);
+	padding: 0.5rem 0.75rem;
+	text-align: left;
+}
+
+.rich-editor-body th {
+	background-color: var(--muted);
+	font-weight: 600;
+}
+
+.rich-editor-body strong {
+	font-weight: 700;
+}
+
+.rich-editor-body em {
+	font-style: italic;
+}
+
+.rich-editor-body u {
+	text-decoration: underline;
+}
+
+.rich-editor-body s {
+	text-decoration: line-through;
+}
+
+.rich-editor-body p.is-editor-empty:first-child::before {
+	content: attr(data-placeholder);
+	float: left;
+	color: var(--muted-foreground);
+	pointer-events: none;
+	height: 0;
+}
+
+.rich-editor-body .math-inline {
+	display: inline;
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+	background-color: var(--accent);
+	color: var(--accent-foreground);
+	padding: 0.1em 0.3em;
+	border-radius: 0.25rem;
+}
+
+.rich-editor-body .math-block {
+	font-family: var(--font-mono);
+	font-size: 0.875rem;
+	background-color: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	padding: 0.75rem 1rem;
+	margin: 0.75rem 0;
+	white-space: pre-wrap;
+}
+
+/* --- Slash Command Menu --- */
+
+.slash-command-menu {
+	position: fixed;
+	z-index: 50;
+	min-width: 16rem;
+	max-height: 20rem;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--muted-foreground) transparent;
+	border-radius: 0.75rem;
+	border: 1px solid var(--border);
+	background-color: var(--card);
+	box-shadow: var(--shadow-lg);
+	padding: 0.25rem;
+}
+
+.slash-command-menu::-webkit-scrollbar {
+	width: 4px;
+}
+
+.slash-command-menu::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.slash-command-menu::-webkit-scrollbar-thumb {
+	background-color: var(--muted-foreground);
+	border-radius: 2px;
+}
+
+.slash-command-item {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	width: 100%;
+	padding: 0.5rem 0.75rem;
+	text-align: left;
+	font-size: 0.8125rem;
+	cursor: pointer;
+	border-radius: 0.5rem;
+	background: transparent;
+	color: var(--foreground);
+	border: none;
+	transition: background-color 0.1s;
+}
+
+.slash-command-item:hover,
+.slash-command-item-active {
+	background-color: var(--accent);
+}
+
+.slash-command-icon {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 0.375rem;
+	background-color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 700;
+	font-family: var(--font-mono);
+}
+
+.slash-command-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.slash-command-title {
+	font-weight: 500;
+	font-size: 0.8125rem;
+	line-height: 1.25;
+}
+
+.slash-command-desc {
+	font-size: 0.6875rem;
+	color: var(--muted-foreground);
+	line-height: 1.25;
+}

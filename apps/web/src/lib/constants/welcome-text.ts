@@ -35,7 +35,7 @@ $$
 
 --
 
-#### start editing in MDX mode. More features coming soon:
+#### Start editing, or use the Agent Chat. More features coming soon:
 - Rich Document Editor
 - Agent Chat History
 - Plan Mode and review differences

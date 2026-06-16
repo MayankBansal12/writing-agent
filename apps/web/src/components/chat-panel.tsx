@@ -72,7 +72,6 @@ interface ChatMessage {
 	id: string;
 	content: string;
 	role: "user" | "assistant";
-	format?: "mdx" | "plain";
 	stateData?: WritingAgentState;
 	canReviewDiff?: boolean;
 }
@@ -406,8 +405,7 @@ export function ChatPanel({
 							id: (Date.now() + 1).toString(),
 							content: messageContent,
 							role: "assistant",
-							format: "plain",
-							stateData: finalState,
+stateData: finalState,
 							canReviewDiff,
 						};
 						setMessages((prev) => [...prev, assistantMessage]);
@@ -461,7 +459,7 @@ export function ChatPanel({
 				<h2 className="font-semibold text-lg">Agent Chat</h2>
 			</CardHeader>
 			<CardContent className="flex flex-1 flex-col justify-between gap-4 overflow-hidden p-0">
-				<div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4">
+				<div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 thin-scrollbar">
 					{messages.length > 0 ? (
 						<AnimatePresence mode="popLayout">
 							{messages?.map((message) => (
@@ -637,7 +635,7 @@ export function ChatPanel({
 										<div>Original</div>
 										<div>Suggested Fix</div>
 									</div>
-									<div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6">
+									<div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6 thin-scrollbar">
 										{diffReview.diff.map((line) => (
 											<div key={line.id} className="grid md:grid-cols-2">
 												<div
