@@ -4,13 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Dialog,
 	DialogContent,
-	DialogHeader,
-	DialogTitle,
 } from "./dialog";
+import { Check } from "lucide-react";
 import { MermaidDiagram } from "./mermaid-diagram";
 
 const WIDTH_OPTIONS = ["25%", "50%", "75%", "100%"] as const;
-const DEFAULT_CODE = "flowchart TD\n  A --> B";
+const DEFAULT_CODE = "flowchart LR\n  A --> B";
 
 interface MermaidEditorDialogProps {
 	open: boolean;
@@ -29,15 +28,17 @@ export function MermaidEditorDialog({
 }: MermaidEditorDialogProps) {
 	const [editCode, setEditCode] = useState(code);
 	const [editWidth, setEditWidth] = useState(width);
-	const [debouncedCode, setDebouncedCode] = useState(code);
+	const [debouncedCode, setDebouncedCode] = useState(
+		code || DEFAULT_CODE,
+	);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
 	useEffect(() => {
 		if (open) {
-			setEditCode(code);
+			setEditCode(code || DEFAULT_CODE);
 			setEditWidth(width);
-			setDebouncedCode(code);
+			setDebouncedCode(code || DEFAULT_CODE);
 			setErrorMsg(null);
 		}
 	}, [open, code, width]);
@@ -63,8 +64,12 @@ export function MermaidEditorDialog({
 				e.preventDefault();
 				onOpenChange(false);
 			}
+			if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+				e.preventDefault();
+				handleSave();
+			}
 		},
-		[onOpenChange],
+		[onOpenChange, handleSave],
 	);
 
 	return (
@@ -74,21 +79,12 @@ export function MermaidEditorDialog({
 				onOpenAutoFocus={(e) => e.preventDefault()}
 				onKeyDown={handleKeyDown}
 			>
-				<DialogHeader>
-					<DialogTitle>Edit Diagram</DialogTitle>
-				</DialogHeader>
 				<div className="mermaid-dialog-body">
 					<div className="mermaid-dialog-preview">
-						{debouncedCode ? (
-							<MermaidDiagram
-								code={debouncedCode}
-								onError={(msg) => setErrorMsg(msg)}
-							/>
-						) : (
-							<span className="text-muted-foreground text-sm">
-								Start typing mermaid syntax to see a preview
-							</span>
-						)}
+						<MermaidDiagram
+							code={debouncedCode}
+							onError={(msg) => setErrorMsg(msg)}
+						/>
 						{errorMsg && (
 							<div className="mermaid-dialog-error">
 								<span className="text-destructive text-sm font-medium">
@@ -125,22 +121,14 @@ export function MermaidEditorDialog({
 									))}
 								</select>
 							</label>
-							<div className="mermaid-dialog-actions">
-								<button
-									type="button"
-									className="mermaid-dialog-btn mermaid-dialog-btn-cancel"
-									onClick={() => onOpenChange(false)}
-								>
-									Cancel
-								</button>
-								<button
-									type="button"
-									className="mermaid-dialog-btn mermaid-dialog-btn-save"
-									onClick={handleSave}
-								>
-									Save
-								</button>
-							</div>
+							<button
+								type="button"
+								className="mermaid-dialog-btn mermaid-dialog-btn-save"
+								onClick={handleSave}
+							>
+								<Check className="h-3.5 w-3.5" />
+								Save
+							</button>
 						</div>
 					</div>
 				</div>

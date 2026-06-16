@@ -17,7 +17,7 @@ export const MermaidInputRule = Extension.create({
 					tr.delete(range.from, range.to);
 					tr.insert(
 						range.from,
-						nodeType.create({ code: "", width: "50%" }),
+						nodeType.create({ code: "", width: "75%" }),
 					);
 				},
 			}),

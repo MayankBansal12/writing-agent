@@ -107,6 +107,7 @@ interface MermaidDiagramProps {
 export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [loading, setLoading] = useState(false);
 	const { resolvedTheme } = useTheme();
 	const onErrorRef = useRef(onError);
 	onErrorRef.current = onError;
@@ -116,6 +117,7 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 		if (!container || !code) {
 			if (!code) {
 				setError(null);
+				setLoading(false);
 				onErrorRef.current?.(null);
 			}
 			return;
@@ -124,6 +126,7 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 		let cancelled = false;
 		container.innerHTML = "";
 		setError(null);
+		setLoading(true);
 		onErrorRef.current?.(null);
 
 		const isDark = resolvedTheme !== "light";
@@ -145,6 +148,8 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 					onErrorRef.current?.(msg);
 					container.innerHTML = "";
 				}
+			} finally {
+				if (!cancelled) setLoading(false);
 			}
 		})();
 
@@ -153,10 +158,23 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 		};
 	}, [code, resolvedTheme]);
 
+	if (!code) {
+		return (
+			<div className="mermaid-diagram-container mermaid-diagram-placeholder">
+				<span className="mermaid-diagram-placeholder-text">
+					Click edit to render a diagram with mermaid syntax
+				</span>
+			</div>
+		);
+	}
+
 	return (
 		<div className="mermaid-diagram-container">
+			{loading && !error && (
+				<span className="mermaid-diagram-loading">Rendering diagram…</span>
+			)}
 			<div ref={containerRef} />
-			{error && <span className="text-destructive text-sm">{error}</span>}
+			{error && <span className="mermaid-diagram-error-text">{error}</span>}
 		</div>
 	);
 }

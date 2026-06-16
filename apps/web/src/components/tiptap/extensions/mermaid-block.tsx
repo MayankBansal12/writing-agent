@@ -4,12 +4,13 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { useCallback, useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import { MermaidDiagram } from "../../ui/mermaid-diagram";
 import { MermaidEditorDialog } from "../../ui/mermaid-editor-dialog";
 
 function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 	const code = node.attrs.code ?? "";
-	const width = node.attrs.width ?? "50%";
+	const width = node.attrs.width ?? "75%";
 	const [dialogOpen, setDialogOpen] = useState(false);
 
 	useEffect(() => {
@@ -37,7 +38,7 @@ function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 				className="mermaid-edit-overlay-btn"
 				onClick={() => setDialogOpen(true)}
 			>
-				Edit
+				<Pencil className="h-3.5 w-3.5" />
 			</button>
 			<span className="mermaid-width-label">{width}</span>
 			<MermaidEditorDialog
@@ -63,7 +64,7 @@ export const MermaidBlock = Node.create({
 				default: "",
 			},
 			width: {
-				default: "50%",
+				default: "75%",
 				rendered: false,
 			},
 		};
