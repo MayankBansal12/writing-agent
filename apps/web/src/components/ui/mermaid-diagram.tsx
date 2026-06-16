@@ -32,8 +32,13 @@ async function renderMermaidSvg(
 
 	await mermaid.parse(code);
 	const id = `mermaid-${crypto.randomUUID()}`;
-	const { svg } = await mermaid.render(id, code);
-	container.innerHTML = svg;
+	try {
+		const { svg } = await mermaid.render(id, code);
+		container.innerHTML = svg;
+	} finally {
+		document.getElementById(`d${id}`)?.remove();
+		document.getElementById(id)?.remove();
+	}
 }
 
 async function renderExcalidrawSvg(
@@ -100,14 +105,15 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
-	const ref = useRef<HTMLDivElement>(null);
+	const containerRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const { resolvedTheme } = useTheme();
 	const onErrorRef = useRef(onError);
 	onErrorRef.current = onError;
 
 	useEffect(() => {
-		if (!ref.current || !code) {
+		const container = containerRef.current;
+		if (!container || !code) {
 			if (!code) {
 				setError(null);
 				onErrorRef.current?.(null);
@@ -115,7 +121,7 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 			return;
 		}
 
-		const container = ref.current;
+		let cancelled = false;
 		container.innerHTML = "";
 		setError(null);
 		onErrorRef.current?.(null);
@@ -126,24 +132,30 @@ export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
 		(async () => {
 			try {
 				const rendered = await renderExcalidrawSvg(container, code, isDark);
-				if (rendered) return;
+				if (rendered || cancelled) return;
 				await renderMermaidSvg(container, code, theme);
 			} catch {
+				if (cancelled) return;
 				try {
 					await renderMermaidSvg(container, code, theme);
 				} catch (mermaidErr) {
+					if (cancelled) return;
 					const msg = extractMermaidError(mermaidErr);
-					console.error("Mermaid syntax error:", mermaidErr);
 					setError(msg);
 					onErrorRef.current?.(msg);
 					container.innerHTML = "";
 				}
 			}
 		})();
+
+		return () => {
+			cancelled = true;
+		};
 	}, [code, resolvedTheme]);
 
 	return (
-		<div ref={ref} className="mermaid-diagram-container">
+		<div className="mermaid-diagram-container">
+			<div ref={containerRef} />
 			{error && <span className="text-destructive text-sm">{error}</span>}
 		</div>
 	);
