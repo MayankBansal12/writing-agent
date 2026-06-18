@@ -5,17 +5,17 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import Typography from "@tiptap/extension-typography";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import { common, createLowlight } from "lowlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef } from "react";
 import { MathInline, MathBlock } from "./extensions/math-passthrough";
 import { MermaidBlock } from "./extensions/mermaid-block";
 import { MermaidInputRule } from "./extensions/mermaid-input-rule";
+import {
+	ShikiCodeBlock,
+	ShikiCodeBlockThemeBridge,
+} from "./extensions/shiki-code-block";
 import { SlashCommandMenu } from "./extensions/slash-command-menu";
 import "./styles/editor.css";
-
-const lowlight = createLowlight(common);
 
 interface RichDocumentEditorProps {
 	content: string;
@@ -32,7 +32,7 @@ export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProp
 				heading: { levels: [1, 2, 3] },
 			}),
 			MermaidInputRule,
-			CodeBlockLowlight.configure({ lowlight }),
+			ShikiCodeBlock,
 			MermaidBlock,
 			Markdown.configure({
 				html: true,
@@ -76,6 +76,7 @@ export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProp
 		<div className="rich-editor-wrapper">
 			<EditorContent editor={editor} className="rich-editor-content thin-scrollbar" />
 			<SlashCommandMenu editor={editor} />
+			<ShikiCodeBlockThemeBridge />
 		</div>
 	);
 }
