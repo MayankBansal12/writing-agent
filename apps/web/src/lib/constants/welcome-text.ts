@@ -2,7 +2,6 @@ export const welcomeText = `# Welcome to Wavmo
 
 An Agent that helps you write **better documents**. Get started using the **Agent Chat** in the right panel.
 
-
 ## how it works?
 - it plans, writes the draft, reviews and improves. and it keep on going until it's great.
 
@@ -32,8 +31,7 @@ $$
 \\int_0^1 x^2 \\, dx = \\frac{1}{3}
 $$
 
-
---
+---
 
 #### Start editing, or use the Agent Chat. More features coming soon:
 - Rich Document Editor
