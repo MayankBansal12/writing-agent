@@ -1,14 +1,16 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getAppHighlighter } from "@/lib/shiki-highlighter";
 import "katex/dist/katex.min.css";
-import rehypeShiki from "@shikijs/rehype";
-import { memo } from "react";
+import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
+import { memo, useEffect, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import type { HighlighterCore } from "shiki";
 import { MermaidDiagram } from "./mermaid-diagram";
 
 export type MarkdownProps = {
@@ -108,26 +110,49 @@ function MarkdownComponent({
 	className,
 	components = DEFAULT_COMPONENTS,
 }: MarkdownProps) {
+	const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		getAppHighlighter().then((h) => {
+			if (!cancelled) setHighlighter(h);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	return (
 		<div className={cn("markdown-content", className)}>
-			<ReactMarkdown
-				remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-				rehypePlugins={[
-					rehypeKatex,
-					[
-						rehypeShiki,
-						{
-							themes: {
-								light: "min-light",
-								dark: "monokai",
+			{highlighter ? (
+				<ReactMarkdown
+					remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+					rehypePlugins={[
+						rehypeKatex,
+						[
+							rehypeShikiFromHighlighter,
+							highlighter,
+							{
+								themes: {
+									light: "min-light",
+									dark: "monokai",
+								},
 							},
-						},
-					],
-				]}
-				components={components}
-			>
-				{children}
-			</ReactMarkdown>
+						],
+					]}
+					components={components}
+				>
+					{children}
+				</ReactMarkdown>
+			) : (
+				<ReactMarkdown
+					remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+					rehypePlugins={[rehypeKatex]}
+					components={components}
+				>
+					{children}
+				</ReactMarkdown>
+			)}
 		</div>
 	);
 }

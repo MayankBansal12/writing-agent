@@ -1,13 +1,13 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Underline from "@tiptap/extension-underline";
 import Typography from "@tiptap/extension-typography";
-import { Markdown } from "tiptap-markdown";
+import Underline from "@tiptap/extension-underline";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
-import { MathInline, MathBlock } from "./extensions/math-passthrough";
+import { Markdown } from "tiptap-markdown";
+import { MathBlock, MathInline } from "./extensions/math-passthrough";
 import { MermaidBlock } from "./extensions/mermaid-block";
 import { MermaidInputRule } from "./extensions/mermaid-input-rule";
 import {
@@ -15,6 +15,7 @@ import {
 	ShikiCodeBlockThemeBridge,
 } from "./extensions/shiki-code-block";
 import { SlashCommandMenu } from "./extensions/slash-command-menu";
+import "katex/dist/katex.min.css";
 import "./styles/editor.css";
 
 interface RichDocumentEditorProps {
@@ -22,7 +23,10 @@ interface RichDocumentEditorProps {
 	onChange: (markdown: string) => void;
 }
 
-export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProps) {
+export function RichDocumentEditor({
+	content,
+	onChange,
+}: RichDocumentEditorProps) {
 	const lastEmitted = useRef<string>(content);
 
 	const editor = useEditor({
@@ -74,7 +78,10 @@ export function RichDocumentEditor({ content, onChange }: RichDocumentEditorProp
 
 	return (
 		<div className="rich-editor-wrapper">
-			<EditorContent editor={editor} className="rich-editor-content thin-scrollbar" />
+			<EditorContent
+				editor={editor}
+				className="rich-editor-content thin-scrollbar"
+			/>
 			<SlashCommandMenu editor={editor} />
 			<ShikiCodeBlockThemeBridge />
 		</div>
