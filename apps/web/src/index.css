@@ -236,3 +236,54 @@ body {
 	height: 0;
 	background: transparent;
 }
+
+.thin-scrollbar {
+	scrollbar-width: thin;
+	scrollbar-color: var(--muted-foreground) transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar {
+	display: block;
+	width: 6px;
+	height: 6px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb {
+	background-color: var(--muted-foreground);
+	border-radius: 3px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+	background-color: var(--foreground);
+}
+
+/* Shiki dual-theme: swap light tokens for dark via CSS variables emitted by @shikijs/rehype */
+.dark .shiki,
+.dark .shiki span {
+	color: var(--shiki-dark) !important;
+	background-color: var(--shiki-dark-bg) !important;
+	font-style: var(--shiki-dark-font-style) !important;
+	font-weight: var(--shiki-dark-font-weight) !important;
+	text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+.markdown-content pre.shiki {
+	margin: 0 0 1rem;
+	padding: 1rem;
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	font-size: 0.8125rem;
+	line-height: 1.6;
+}
+
+.markdown-content pre.shiki code {
+	background: none;
+	padding: 0;
+	font-size: inherit;
+	color: inherit;
+}

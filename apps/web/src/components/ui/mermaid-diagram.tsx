@@ -32,8 +32,13 @@ async function renderMermaidSvg(
 
 	await mermaid.parse(code);
 	const id = `mermaid-${crypto.randomUUID()}`;
-	const { svg } = await mermaid.render(id, code);
-	container.innerHTML = svg;
+	try {
+		const { svg } = await mermaid.render(id, code);
+		container.innerHTML = svg;
+	} finally {
+		document.getElementById(`d${id}`)?.remove();
+		document.getElementById(id)?.remove();
+	}
 }
 
 async function renderExcalidrawSvg(
@@ -76,17 +81,53 @@ async function renderExcalidrawSvg(
 	return true;
 }
 
-export function MermaidDiagram({ code }: { code: string }) {
-	const ref = useRef<HTMLDivElement>(null);
+function extractMermaidError(err: unknown): string {
+	if (err instanceof Error) {
+		const msg = err.message || "";
+		const lineMatch = msg.match(/Parse error on line (\d+)/);
+		if (lineMatch) {
+			const afterLine = msg.slice(msg.indexOf(lineMatch[0]) + lineMatch[0].length).trim();
+			const firstSentence = afterLine.split(/\n/)[0]?.replace(/^[:\s]+/, "") || "";
+			return firstSentence
+				? `Line ${lineMatch[1]}: ${firstSentence}`
+				: `Syntax error on line ${lineMatch[1]}`;
+		}
+		const hashErr = msg.match(/Error:\s*(.+)/);
+		if (hashErr?.[1]) return hashErr[1].trim();
+		return msg.split("\n")[0]?.slice(0, 120) || "Invalid diagram syntax";
+	}
+	return "Invalid diagram syntax";
+}
+
+interface MermaidDiagramProps {
+	code: string;
+	onError?: (msg: string | null) => void;
+}
+
+export function MermaidDiagram({ code, onError }: MermaidDiagramProps) {
+	const containerRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [loading, setLoading] = useState(false);
 	const { resolvedTheme } = useTheme();
+	const onErrorRef = useRef(onError);
+	onErrorRef.current = onError;
 
 	useEffect(() => {
-		if (!ref.current || !code) return;
+		const container = containerRef.current;
+		if (!container || !code) {
+			if (!code) {
+				setError(null);
+				setLoading(false);
+				onErrorRef.current?.(null);
+			}
+			return;
+		}
 
-		const container = ref.current;
+		let cancelled = false;
 		container.innerHTML = "";
 		setError(null);
+		setLoading(true);
+		onErrorRef.current?.(null);
 
 		const isDark = resolvedTheme !== "light";
 		const theme = resolvedTheme ?? "light";
@@ -94,28 +135,46 @@ export function MermaidDiagram({ code }: { code: string }) {
 		(async () => {
 			try {
 				const rendered = await renderExcalidrawSvg(container, code, isDark);
-				if (!rendered) {
-					await renderMermaidSvg(container, code, theme);
-				}
-			} catch (excalidrawErr) {
-				console.warn(
-					"Mermaid-to-excalidraw failed, falling back to mermaid:",
-					excalidrawErr,
-				);
+				if (rendered || cancelled) return;
+				await renderMermaidSvg(container, code, theme);
+			} catch {
+				if (cancelled) return;
 				try {
 					await renderMermaidSvg(container, code, theme);
 				} catch (mermaidErr) {
-					console.error("Mermaid syntax error:", mermaidErr);
-					setError("Invalid diagram syntax");
+					if (cancelled) return;
+					const msg = extractMermaidError(mermaidErr);
+					setError(msg);
+					onErrorRef.current?.(msg);
 					container.innerHTML = "";
 				}
+			} finally {
+				if (!cancelled) setLoading(false);
 			}
 		})();
+
+		return () => {
+			cancelled = true;
+		};
 	}, [code, resolvedTheme]);
 
+	if (!code) {
+		return (
+			<div className="mermaid-diagram-container mermaid-diagram-placeholder">
+				<span className="mermaid-diagram-placeholder-text">
+					Click edit to render a diagram with mermaid syntax
+				</span>
+			</div>
+		);
+	}
+
 	return (
-		<div ref={ref} className="mb-4 block w-full overflow-hidden p-1">
-			{error && <span className="text-destructive text-sm">{error}</span>}
+		<div className="mermaid-diagram-container">
+			{loading && !error && (
+				<span className="mermaid-diagram-loading">Rendering diagram…</span>
+			)}
+			<div ref={containerRef} />
+			{error && <span className="mermaid-diagram-error-text">{error}</span>}
 		</div>
 	);
 }

@@ -26,7 +26,7 @@ function greet(name: string) {
 ### it can handle Math as well
 
 The quadratic formula:
-$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$.
+$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
 
 $$
 \\int_0^1 x^2 \\, dx = \\frac{1}{3}
@@ -35,7 +35,7 @@ $$
 
 --
 
-#### start editing in MDX mode. More features coming soon:
+#### Start editing, or use the Agent Chat. More features coming soon:
 - Rich Document Editor
 - Agent Chat History
 - Plan Mode and review differences

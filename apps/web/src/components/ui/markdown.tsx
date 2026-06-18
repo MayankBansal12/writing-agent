@@ -1,14 +1,16 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getAppHighlighter } from "@/lib/shiki-highlighter";
 import "katex/dist/katex.min.css";
-import { memo } from "react";
+import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
+import { memo, useEffect, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { CodeBlock, CodeBlockCode } from "./code-block";
+import type { HighlighterCore } from "shiki";
 import { MermaidDiagram } from "./mermaid-diagram";
 
 export type MarkdownProps = {
@@ -42,15 +44,15 @@ const DEFAULT_COMPONENTS: Partial<Components> = {
 
 		if (isInline) {
 			return (
-				<span
+				<code
 					className={cn(
-						"rounded-md bg-accent/50 px-2 py-1 font-mono text-sm dark:bg-secondary-foreground",
+						"rounded-md bg-accent/50 px-1.5 py-0.5 font-mono text-[0.85em] dark:bg-secondary-foreground",
 						className,
 					)}
 					{...props}
 				>
 					{children}
-				</span>
+				</code>
 			);
 		}
 
@@ -62,24 +64,12 @@ const DEFAULT_COMPONENTS: Partial<Components> = {
 		}
 
 		return (
-			<CodeBlock className={className}>
-				<CodeBlockCode code={code} language={language} />
-			</CodeBlock>
-		);
-	},
-	pre: function PreComponent({ children, className, ...props }) {
-		return (
-			<pre
-				className={cn(
-					"not-prose mb-4 overflow-x-auto rounded-xl border border-border bg-card p-4 text-sm",
-					className,
-				)}
-				{...props}
-			>
+			<code className={className} {...props}>
 				{children}
-			</pre>
+			</code>
 		);
 	},
+	pre: ({ children }) => <>{children}</>,
 	table: ({ children }) => (
 		<div className="mb-4 overflow-x-auto">
 			<table className="w-full border-collapse border border-border">
@@ -120,15 +110,49 @@ function MarkdownComponent({
 	className,
 	components = DEFAULT_COMPONENTS,
 }: MarkdownProps) {
+	const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		getAppHighlighter().then((h) => {
+			if (!cancelled) setHighlighter(h);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	return (
 		<div className={cn("markdown-content", className)}>
-			<ReactMarkdown
-				remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-				rehypePlugins={[rehypeKatex]}
-				components={components}
-			>
-				{children}
-			</ReactMarkdown>
+			{highlighter ? (
+				<ReactMarkdown
+					remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+					rehypePlugins={[
+						rehypeKatex,
+						[
+							rehypeShikiFromHighlighter,
+							highlighter,
+							{
+								themes: {
+									light: "min-light",
+									dark: "monokai",
+								},
+							},
+						],
+					]}
+					components={components}
+				>
+					{children}
+				</ReactMarkdown>
+			) : (
+				<ReactMarkdown
+					remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+					rehypePlugins={[rehypeKatex]}
+					components={components}
+				>
+					{children}
+				</ReactMarkdown>
+			)}
 		</div>
 	);
 }
