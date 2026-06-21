@@ -67,6 +67,12 @@ GROQ_API_KEY=your_groq_api_key
 GROQ_BASE_URL=https://api.groq.com/openai/v1/
 PORT=8000
 CORS_ORIGIN=http://localhost:3001
+
+# Rate limiting (see "Rate Limiting" section below)
+REDIS_URL=redis://default:password@host:port
+RATE_LIMIT_DEFAULT=5
+RATE_LIMIT_WINDOW_SECONDS=86400
+RATE_LIMIT_BYPASS_DEFAULT_LIMIT=200
 ```
 
 - For Client
@@ -159,3 +165,45 @@ pnpm run check
 ```
 
 This will automatically format and lint your code.
+
+## Rate Limiting
+
+The chat endpoints (`/api/chat` and `/api/chat/stream/init`) are rate limited per client IP. Limits are stored in Redis under the key `rl:ip:<ip>` as a small JSON blob `{ count, windowStart }` that expires after the window.
+
+**Defaults:** 5 messages per 24h rolling window, anchored at the user's first message of the cycle.
+
+**Configurable via env** (see `apps/server/.env.example`):
+
+- `REDIS_URL` — required. Any Redis-compatible endpoint (Redis Cloud free tier works).
+- `RATE_LIMIT_DEFAULT` — default per-IP limit (default `5`).
+- `RATE_LIMIT_WINDOW_SECONDS` — window length in seconds (default `86400`).
+- `RATE_LIMIT_BYPASS_DEFAULT_LIMIT` — limit used for IPs in the bypass set that don't have a custom limit (default `200`).
+
+**Bypass / elevated users (per-IP override in Redis):**
+
+```bash
+# Grant bypass to an IP with a custom limit
+SADD rl:bypass:ips 1.2.3.4
+SET  rl:bypass:limit:1.2.3.4 500
+
+# Revoke
+SREM rl:bypass:ips 1.2.3.4
+DEL  rl:bypass:limit:1.2.3.4
+```
+
+If an IP is in the `rl:bypass:ips` set but has no `rl:bypass:limit:<ip>` key, it falls back to `RATE_LIMIT_BYPASS_DEFAULT_LIMIT`.
+
+**Failure mode:** if `REDIS_URL` is unset or Redis is unreachable, the server fails closed (returns `503`) rather than allowing unlimited traffic.
+
+**Response on limit hit:** HTTP `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` headers, plus a JSON body:
+
+```json
+{
+  "error": "rate_limit_exceeded",
+  "limit": 5,
+  "remaining": 0,
+  "resetAt": "2026-06-23T12:34:56.000Z"
+}
+```
+
+**Read-only quota endpoint:** `GET /api/chat/quota` returns the current `limit`, `remaining`, and `resetAt` for the caller's IP without incrementing the counter. The web app uses this to display the "You have N messages remaining today!" pill above the chat input.

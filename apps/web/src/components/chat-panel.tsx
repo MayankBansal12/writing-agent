@@ -3,7 +3,7 @@
 import { diffLines } from "diff";
 import { ArrowUp, CheckLine, Copy, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { promptSuggestions } from "@/lib/constants/suggestions";
@@ -106,6 +106,12 @@ type StreamEvent =
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+interface QuotaState {
+	limit: number;
+	remaining: number;
+	resetAt: number;
+}
+
 export function ChatPanel({
 	changeDocument,
 	currentDocument,
@@ -123,7 +129,53 @@ export function ChatPanel({
 		null,
 	);
 	const [streamTasks, setStreamTasks] = useState<WritingTask[]>([]);
+	const [quota, setQuota] = useState<QuotaState | null>(null);
 	const promptInputRef = useRef<PromptInputRef>(null);
+
+	const updateQuotaFromHeaders = (initResponse: Response) => {
+		const limit = initResponse.headers.get("X-RateLimit-Limit");
+		const remaining = initResponse.headers.get("X-RateLimit-Remaining");
+		const reset = initResponse.headers.get("X-RateLimit-Reset");
+		if (!limit || !remaining || !reset) return;
+		const resetAtMs = Number.parseInt(reset, 10) * 1000;
+		if (!Number.isFinite(resetAtMs)) return;
+		setQuota({
+			limit: Number.parseInt(limit, 10),
+			remaining: Number.parseInt(remaining, 10),
+			resetAt: resetAtMs,
+		});
+	};
+
+	useEffect(() => {
+		let cancelled = false;
+		const load = async () => {
+			try {
+				const res = await fetch(`${API_BASE_URL}/api/chat/quota`, {
+					method: "GET",
+				});
+				if (!res.ok) return;
+				const data = (await res.json()) as {
+					limit: number;
+					remaining: number;
+					resetAt: string;
+				};
+				if (cancelled) return;
+				const resetAtMs = Date.parse(data.resetAt);
+				if (!Number.isFinite(resetAtMs)) return;
+				setQuota({
+					limit: data.limit,
+					remaining: data.remaining,
+					resetAt: resetAtMs,
+				});
+			} catch {
+				/* silent */
+			}
+		};
+		load();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	const splitDiffLines = (value: string) => {
 		const lines = value.split("\n");
@@ -285,6 +337,7 @@ export function ChatPanel({
 
 	const handleSend = async () => {
 		if (!inputValue.trim()) return;
+		if (quota?.remaining === 0) return;
 		setIsLoading(true);
 		setError(null);
 		setStreamState(null);
@@ -312,10 +365,34 @@ export function ChatPanel({
 				}),
 			});
 
+			updateQuotaFromHeaders(initResponse);
+
 			if (!initResponse.ok) {
-				const errorData = await initResponse
-					.json()
-					.catch(() => ({ error: "Failed to initialize stream" }));
+				const errorData = (await initResponse.json().catch(() => ({}))) as {
+					error?: string;
+					message?: string;
+					limit?: number;
+					resetAt?: string;
+				};
+				if (initResponse.status === 429) {
+					if (typeof errorData.limit === "number" && errorData.resetAt) {
+						const resetAtMs = Date.parse(errorData.resetAt);
+						if (Number.isFinite(resetAtMs)) {
+							setQuota({
+								limit: errorData.limit,
+								remaining: 0,
+								resetAt: resetAtMs,
+							});
+						}
+					}
+					const limit = errorData.limit ?? quota?.limit ?? 5;
+					const resetAt = errorData.resetAt
+						? new Date(errorData.resetAt).toLocaleString()
+						: "later";
+					throw new Error(
+						`Daily limit reached (${limit} messages). Try again after ${resetAt}.`,
+					);
+				}
 				throw new Error(
 					errorData.error || errorData.message || "Failed to initialize stream",
 				);
@@ -405,7 +482,7 @@ export function ChatPanel({
 							id: (Date.now() + 1).toString(),
 							content: messageContent,
 							role: "assistant",
-stateData: finalState,
+							stateData: finalState,
 							canReviewDiff,
 						};
 						setMessages((prev) => [...prev, assistantMessage]);
@@ -459,7 +536,7 @@ stateData: finalState,
 				<h2 className="font-semibold text-lg">Agent Chat</h2>
 			</CardHeader>
 			<CardContent className="flex flex-1 flex-col justify-between gap-4 overflow-hidden p-0">
-				<div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 thin-scrollbar">
+				<div className="thin-scrollbar flex h-full w-full flex-col gap-4 overflow-y-auto p-4">
 					{messages.length > 0 ? (
 						<AnimatePresence mode="popLayout">
 							{messages?.map((message) => (
@@ -581,13 +658,15 @@ stateData: finalState,
 					)}
 				</div>
 
+				{quota && quota.remaining < quota.limit && <QuotaPill quota={quota} />}
+
 				<PromptInput
 					ref={promptInputRef}
 					value={inputValue}
 					onValueChange={(value) => setInputValue(value)}
 					isLoading={isLoading}
 					onSubmit={handleSend}
-					className="m-4 mx-auto w-[85%] min-w-sm"
+					className="mx-auto mb-4 w-[85%] min-w-sm"
 				>
 					<PromptInputTextarea placeholder="Explain, Generate, review your documents..." />
 					<PromptInputActions className="justify-end pt-2">
@@ -598,6 +677,7 @@ stateData: finalState,
 								variant="default"
 								size="icon"
 								className="h-8 w-8 rounded-full"
+								disabled={quota?.remaining === 0}
 								onClick={handleSend}
 							>
 								{isLoading ? (
@@ -635,7 +715,7 @@ stateData: finalState,
 										<div>Original</div>
 										<div>Suggested Fix</div>
 									</div>
-									<div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6 thin-scrollbar">
+									<div className="thin-scrollbar min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6">
 										{diffReview.diff.map((line) => (
 											<div key={line.id} className="grid md:grid-cols-2">
 												<div
@@ -685,5 +765,54 @@ stateData: finalState,
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function RelativeCountdown({ ts }: { ts: number }) {
+	const [, force] = useState(0);
+	useEffect(() => {
+		const id = setInterval(() => force((n) => n + 1), 1000);
+		return () => clearInterval(id);
+	}, []);
+	const diffMs = ts - Date.now();
+	if (diffMs <= 0) return <>in a moment</>;
+	const totalSeconds = Math.floor(diffMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) {
+		return (
+			<>
+				in {hours}h {minutes}m
+			</>
+		);
+	}
+	if (minutes > 0) {
+		return (
+			<>
+				in {minutes}m {seconds}s
+			</>
+		);
+	}
+	return <>in {seconds}s</>;
+}
+
+function QuotaPill({ quota }: { quota: QuotaState }) {
+	const { remaining, resetAt } = quota;
+	if (remaining <= 0) {
+		return (
+			<div className="mx-auto mb-2 w-[85%] min-w-sm rounded-2xl border border-input bg-muted/40 px-4 py-2 text-center text-muted-foreground text-sm">
+				No messages left — quota refreshes{" "}
+				<span className="text-foreground">
+					<RelativeCountdown ts={resetAt} />
+				</span>
+				.
+			</div>
+		);
+	}
+	return (
+		<div className="mx-auto mb-2 w-[85%] min-w-sm rounded-2xl border border-input bg-muted/40 px-4 py-2 text-center text-muted-foreground text-sm">
+			You have {remaining} message{remaining === 1 ? "" : "s"} remaining today!
+		</div>
 	);
 }
