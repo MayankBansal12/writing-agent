@@ -39,6 +39,8 @@
 		"babel-plugin-react-compiler": "^1.0.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"dexie": "^4.0.10",
+		"dexie-react-hooks": "^1.1.7",
 		"diff": "^9.0.0",
 		"katex": "^0.16.27",
 		"lucide-react": "^0.546.0",

@@ -24,7 +24,7 @@ const fastify = Fastify({
 fastify.register(fastifyCors, baseCorsConfig);
 
 const rateLimitOptions = {
-	defaultLimit: Number.parseInt(process.env.RATE_LIMIT_DEFAULT || "5", 10),
+	defaultLimit: Number.parseInt(process.env.RATE_LIMIT_DEFAULT || "10", 10),
 	windowSeconds: Number.parseInt(
 		process.env.RATE_LIMIT_WINDOW_SECONDS || "86400",
 		10,

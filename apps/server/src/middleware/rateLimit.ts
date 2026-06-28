@@ -35,15 +35,18 @@ redis.call('SET', key, payload, 'EX', math.ceil(windowMs / 1000))
 return {1, now}
 `;
 
-const SCRIPT_SHA = "rl_incr_v1";
+let cachedSha: string | null = null;
+
+const isNoScriptError = (error: unknown): boolean => {
+	const message =
+		(error as { message?: string } | undefined)?.message ?? "";
+	return /NOSCRIPT/i.test(message);
+};
 
 const loadScript = async (redis: Redis): Promise<string> => {
-	try {
-		await redis.evalsha(SCRIPT_SHA, 0);
-	} catch {
-		await redis.script("LOAD", SCRIPT);
-	}
-	return SCRIPT_SHA;
+	if (cachedSha) return cachedSha;
+	cachedSha = (await redis.script("LOAD", SCRIPT)) as string;
+	return cachedSha;
 };
 
 const resolveLimit = async (
@@ -77,15 +80,30 @@ const evaluate = async (
 	const now = Date.now();
 	const windowMs = opts.windowSeconds * 1000;
 	const key = rateKey(ip);
-	const sha = await loadScript(redis);
-	const result = (await redis.evalsha(
-		sha,
-		1,
-		key,
-		String(now),
-		String(windowMs),
-		String(limit),
-	)) as [number, number];
+	let sha = await loadScript(redis);
+	let result: [number, number];
+	try {
+		result = (await redis.evalsha(
+			sha,
+			1,
+			key,
+			String(now),
+			String(windowMs),
+			String(limit),
+		)) as [number, number];
+	} catch (error) {
+		if (!isNoScriptError(error)) throw error;
+		cachedSha = null;
+		sha = await loadScript(redis);
+		result = (await redis.evalsha(
+			sha,
+			1,
+			key,
+			String(now),
+			String(windowMs),
+			String(limit),
+		)) as [number, number];
+	}
 	const [count, windowStart] = result;
 	const allowed = count <= limit;
 	return {

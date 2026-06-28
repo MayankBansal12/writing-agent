@@ -1,5 +1,6 @@
 "use client";
 
+import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
 import {
 	type ImperativePanelHandle,
@@ -10,15 +11,51 @@ import {
 import { ChatPanel } from "@/components/chat-panel";
 import { DocumentPanel } from "@/components/document-panel";
 import { welcomeText } from "@/lib/constants/welcome-text";
+import { ensureSeeded, loadDocument, saveDocument } from "@/lib/db";
+
+const SAVE_DEBOUNCE_MS = 400;
 
 export default function Home() {
 	const [isChatOpen, setIsChatOpen] = useState(true);
 	const documentPanelRef = useRef<ImperativePanelHandle>(null);
 	const chatPanelRef = useRef<ImperativePanelHandle>(null);
-	const [content, setContent] = useState(welcomeText);
 
-	const handleDocumentChange = (content: string) => {
-		setContent(content);
+	const persistedContent = useLiveQuery(() => loadDocument(), []);
+	const [content, setContent] = useState(welcomeText);
+	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const lastSavedRef = useRef<string | null>(null);
+	const hydratedRef = useRef(false);
+
+	useEffect(() => {
+		ensureSeeded().catch(() => {});
+	}, []);
+
+	useEffect(() => {
+		if (hydratedRef.current) return;
+		if (persistedContent === undefined) return;
+		hydratedRef.current = true;
+		const next = persistedContent ?? welcomeText;
+		setContent(next);
+		lastSavedRef.current = next;
+	}, [persistedContent]);
+
+	useEffect(() => {
+		return () => {
+			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+		};
+	}, []);
+
+	const handleDocumentChange = (next: string) => {
+		setContent(next);
+		if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+		saveTimerRef.current = setTimeout(() => {
+			if (next !== lastSavedRef.current) {
+				lastSavedRef.current = next;
+				saveDocument(next).catch(() => {
+					lastSavedRef.current = null;
+				});
+			}
+		}, SAVE_DEBOUNCE_MS);
 	};
 
 	const handleToggleChat = () => {
