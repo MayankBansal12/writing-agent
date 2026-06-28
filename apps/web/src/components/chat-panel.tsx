@@ -1,12 +1,14 @@
 "use client";
 
+import { useLiveQuery } from "dexie-react-hooks";
 import { diffLines } from "diff";
-import { ArrowUp, CheckLine, Copy, Square, X } from "lucide-react";
+import { ArrowUp, CheckLine, ChevronDown, ChevronUp, Copy, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { promptSuggestions } from "@/lib/constants/suggestions";
+import { loadChat, type PersistedChatMessage, saveChat } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { ChainOfThoughtReasoning } from "./chain-of-thought-reasoning";
 import {
@@ -106,6 +108,12 @@ type StreamEvent =
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+interface QuotaState {
+	limit: number;
+	remaining: number;
+	resetAt: number;
+}
+
 export function ChatPanel({
 	changeDocument,
 	currentDocument,
@@ -123,7 +131,102 @@ export function ChatPanel({
 		null,
 	);
 	const [streamTasks, setStreamTasks] = useState<WritingTask[]>([]);
+	const [quota, setQuota] = useState<QuotaState | null>(null);
 	const promptInputRef = useRef<PromptInputRef>(null);
+	const hydratedRef = useRef(false);
+	const messagesContainerRef = useRef<HTMLDivElement>(null);
+	const [showScrollTop, setShowScrollTop] = useState(false);
+	const [showScrollBottom, setShowScrollBottom] = useState(false);
+	const [isScrolling, setIsScrolling] = useState(false);
+	const isFirstAutoScroll = useRef(true);
+	const hideButtonsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const persistedMessages = useLiveQuery(() => loadChat(), []);
+
+	useEffect(() => {
+		if (hydratedRef.current) return;
+		if (persistedMessages === undefined) return;
+		hydratedRef.current = true;
+		if (persistedMessages.length > 0) {
+			setMessages(persistedMessages as ChatMessage[]);
+		}
+	}, [persistedMessages]);
+
+	const updateMessages = useCallback(
+		(updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+			setMessages((prev) => {
+				const next =
+					typeof updater === "function"
+						? (updater as (p: ChatMessage[]) => ChatMessage[])(prev)
+						: updater;
+				saveChat(next as PersistedChatMessage[]).catch(() => {});
+				return next;
+			});
+		},
+		[],
+	);
+
+	const updateQuotaFromHeaders = (initResponse: Response) => {
+		const limit = initResponse.headers.get("X-RateLimit-Limit");
+		const remaining = initResponse.headers.get("X-RateLimit-Remaining");
+		const reset = initResponse.headers.get("X-RateLimit-Reset");
+		if (!limit || !remaining || !reset) return;
+		const resetAtMs = Number.parseInt(reset, 10) * 1000;
+		if (!Number.isFinite(resetAtMs)) return;
+		setQuota({
+			limit: Number.parseInt(limit, 10),
+			remaining: Number.parseInt(remaining, 10),
+			resetAt: resetAtMs,
+		});
+	};
+
+	useEffect(() => {
+		let cancelled = false;
+		const load = async () => {
+			try {
+				const res = await fetch(`${API_BASE_URL}/api/chat/quota`, {
+					method: "GET",
+				});
+				if (!res.ok) return;
+				const data = (await res.json()) as {
+					limit: number;
+					remaining: number;
+					resetAt: string;
+				};
+				if (cancelled) return;
+				const resetAtMs = Date.parse(data.resetAt);
+				if (!Number.isFinite(resetAtMs)) return;
+				setQuota({
+					limit: data.limit,
+					remaining: data.remaining,
+					resetAt: resetAtMs,
+				});
+			} catch {
+				/* silent */
+			}
+		};
+		load();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// Auto-scroll to bottom when a new message is sent/received
+	useEffect(() => {
+		if (!hydratedRef.current) return;
+		if (isFirstAutoScroll.current) {
+			isFirstAutoScroll.current = false;
+			return;
+		}
+		requestAnimationFrame(() => {
+			const el = messagesContainerRef.current;
+			if (!el) return;
+			el.scrollTo({
+				top: el.scrollHeight,
+				behavior: "smooth",
+			});
+		});
+	}, [messages.length]);
 
 	const splitDiffLines = (value: string) => {
 		const lines = value.split("\n");
@@ -237,6 +340,46 @@ export function ChatPanel({
 		return diff;
 	};
 
+	const handleScroll = useCallback(() => {
+		const el = messagesContainerRef.current;
+		if (!el) return;
+		const { scrollTop, scrollHeight, clientHeight } = el;
+		// Only show buttons if content is actually scrollable
+		const isScrollable = scrollHeight > clientHeight;
+		const isAtTop = scrollTop <= 10;
+		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10;
+		// At the bottom: hide all icons. At the top: only show down. In between: show both.
+		setShowScrollTop(isScrollable && !isAtTop && !isAtBottom);
+		setShowScrollBottom(isScrollable && !isAtBottom);
+		setIsScrolling(true);
+		if (hideButtonsTimeoutRef.current) {
+			clearTimeout(hideButtonsTimeoutRef.current);
+		}
+		hideButtonsTimeoutRef.current = setTimeout(() => {
+			setIsScrolling(false);
+		}, 2000);
+	}, []);
+
+	const handleMouseActivity = useCallback(() => {
+		setIsScrolling(true);
+		if (hideButtonsTimeoutRef.current) {
+			clearTimeout(hideButtonsTimeoutRef.current);
+		}
+		hideButtonsTimeoutRef.current = setTimeout(() => {
+			setIsScrolling(false);
+		}, 2000);
+	}, []);
+
+	const scrollToTop = useCallback(() => {
+		messagesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+	}, []);
+
+	const scrollToBottom = useCallback(() => {
+		const el = messagesContainerRef.current;
+		if (!el) return;
+		el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+	}, []);
+
 	const handleCopy = (content: string, messageId: string) => {
 		navigator.clipboard.writeText(content);
 		setCopied(messageId);
@@ -285,6 +428,10 @@ export function ChatPanel({
 
 	const handleSend = async () => {
 		if (!inputValue.trim()) return;
+		if (quota?.remaining === 0) return;
+		if (quota) {
+			setQuota({ ...quota, remaining: Math.max(0, quota.remaining - 1) });
+		}
 		setIsLoading(true);
 		setError(null);
 		setStreamState(null);
@@ -296,7 +443,7 @@ export function ChatPanel({
 			role: "user",
 		};
 
-		setMessages((prev) => [...prev, userMessage]);
+		updateMessages((prev) => [...prev, userMessage]);
 		const promptValue = inputValue;
 		setInputValue("");
 
@@ -312,10 +459,34 @@ export function ChatPanel({
 				}),
 			});
 
+			updateQuotaFromHeaders(initResponse);
+
 			if (!initResponse.ok) {
-				const errorData = await initResponse
-					.json()
-					.catch(() => ({ error: "Failed to initialize stream" }));
+				const errorData = (await initResponse.json().catch(() => ({}))) as {
+					error?: string;
+					message?: string;
+					limit?: number;
+					resetAt?: string;
+				};
+				if (initResponse.status === 429) {
+					if (typeof errorData.limit === "number" && errorData.resetAt) {
+						const resetAtMs = Date.parse(errorData.resetAt);
+						if (Number.isFinite(resetAtMs)) {
+							setQuota({
+								limit: errorData.limit,
+								remaining: 0,
+								resetAt: resetAtMs,
+							});
+						}
+					}
+					const limit = errorData.limit ?? quota?.limit ?? 5;
+					const resetAt = errorData.resetAt
+						? new Date(errorData.resetAt).toLocaleString()
+						: "later";
+					throw new Error(
+						`Daily limit reached (${limit} messages). Try again after ${resetAt}.`,
+					);
+				}
 				throw new Error(
 					errorData.error || errorData.message || "Failed to initialize stream",
 				);
@@ -405,10 +576,10 @@ export function ChatPanel({
 							id: (Date.now() + 1).toString(),
 							content: messageContent,
 							role: "assistant",
-stateData: finalState,
+							stateData: finalState,
 							canReviewDiff,
 						};
-						setMessages((prev) => [...prev, assistantMessage]);
+						updateMessages((prev) => [...prev, assistantMessage]);
 						setIsLoading(false);
 						eventSource.close();
 						break;
@@ -459,8 +630,15 @@ stateData: finalState,
 				<h2 className="font-semibold text-lg">Agent Chat</h2>
 			</CardHeader>
 			<CardContent className="flex flex-1 flex-col justify-between gap-4 overflow-hidden p-0">
-				<div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 thin-scrollbar">
-					{messages.length > 0 ? (
+				<div className="relative min-h-0 flex-1">
+					<div
+						ref={messagesContainerRef}
+						onScroll={handleScroll}
+						onMouseMove={handleMouseActivity}
+						onMouseEnter={handleMouseActivity}
+						className="thin-scrollbar flex h-full w-full flex-col gap-4 overflow-y-auto p-4"
+					>
+						{messages.length > 0 ? (
 						<AnimatePresence mode="popLayout">
 							{messages?.map((message) => (
 								<div
@@ -579,36 +757,72 @@ stateData: finalState,
 							please try again.
 						</SystemMessage>
 					)}
+
 				</div>
 
-				<PromptInput
-					ref={promptInputRef}
-					value={inputValue}
-					onValueChange={(value) => setInputValue(value)}
-					isLoading={isLoading}
-					onSubmit={handleSend}
-					className="m-4 mx-auto w-[85%] min-w-sm"
-				>
-					<PromptInputTextarea placeholder="Explain, Generate, review your documents..." />
-					<PromptInputActions className="justify-end pt-2">
-						<PromptInputAction
-							tooltip={isLoading ? "Stop generation" : "Send message"}
-						>
+				{/* Scroll buttons - stacked at bottom-right, show only when scrolling */}
+				{isScrolling && (
+					<div className="absolute bottom-4 right-4 z-10 flex flex-col gap-1">
+						{showScrollTop && (
 							<Button
-								variant="default"
+								variant="outline"
 								size="icon"
-								className="h-8 w-8 rounded-full"
-								onClick={handleSend}
+								className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm shadow-md hover:bg-background"
+								onClick={scrollToTop}
 							>
-								{isLoading ? (
-									<Square className="size-5 fill-current" />
-								) : (
-									<ArrowUp className="size-5" />
-								)}
+								<ChevronUp className="size-4" />
 							</Button>
-						</PromptInputAction>
-					</PromptInputActions>
-				</PromptInput>
+						)}
+						{showScrollBottom && (
+							<Button
+								variant="outline"
+								size="icon"
+								className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm shadow-md hover:bg-background"
+								onClick={scrollToBottom}
+							>
+								<ChevronDown className="size-4" />
+							</Button>
+						)}
+						</div>
+				)}
+				</div>
+
+				<div className="relative mx-auto mb-4 w-[85%] min-w-sm">
+					{quota && quota.remaining <= 3 && (
+						<div className="absolute left-1/2 top-0 w-max -translate-x-1/2 -translate-y-[90%]">
+							<QuotaPill quota={quota} />
+						</div>
+					)}
+					<PromptInput
+						ref={promptInputRef}
+						value={inputValue}
+						onValueChange={(value) => setInputValue(value)}
+						isLoading={isLoading}
+						onSubmit={handleSend}
+						className="relative z-10 w-full pt-2"
+					>
+						<PromptInputTextarea placeholder="Explain, Generate, review your documents..." />
+						<PromptInputActions className="justify-end pt-2">
+							<PromptInputAction
+								tooltip={isLoading ? "Stop generation" : "Send message"}
+							>
+								<Button
+									variant="default"
+									size="icon"
+									className="h-8 w-8 rounded-full"
+									disabled={quota?.remaining === 0}
+									onClick={handleSend}
+								>
+									{isLoading ? (
+										<Square className="size-5 fill-current" />
+									) : (
+										<ArrowUp className="size-5" />
+									)}
+								</Button>
+							</PromptInputAction>
+						</PromptInputActions>
+					</PromptInput>
+				</div>
 
 				{diffReview && (
 					<div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
@@ -635,7 +849,7 @@ stateData: finalState,
 										<div>Original</div>
 										<div>Suggested Fix</div>
 									</div>
-									<div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6 thin-scrollbar">
+									<div className="thin-scrollbar min-h-0 flex-1 divide-y divide-border overflow-y-auto font-mono text-sm leading-6">
 										{diffReview.diff.map((line) => (
 											<div key={line.id} className="grid md:grid-cols-2">
 												<div
@@ -685,5 +899,54 @@ stateData: finalState,
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function RelativeCountdown({ ts }: { ts: number }) {
+	const [, force] = useState(0);
+	useEffect(() => {
+		const id = setInterval(() => force((n) => n + 1), 1000);
+		return () => clearInterval(id);
+	}, []);
+	const diffMs = ts - Date.now();
+	if (diffMs <= 0) return <>in a moment</>;
+	const totalSeconds = Math.floor(diffMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) {
+		return (
+			<>
+				in {hours}h {minutes}m
+			</>
+		);
+	}
+	if (minutes > 0) {
+		return (
+			<>
+				in {minutes}m {seconds}s
+			</>
+		);
+	}
+	return <>in {seconds}s</>;
+}
+
+function QuotaPill({ quota }: { quota: QuotaState }) {
+	const { remaining, resetAt } = quota;
+	if (remaining <= 0) {
+		return (
+			<div className="w-fit rounded-t-xl rounded-b-none border border-input border-b-0 bg-background px-4 py-1.5 text-center text-muted-foreground text-sm">
+				No messages left — quota refreshes{" "}
+				<span className="text-foreground">
+					<RelativeCountdown ts={resetAt} />
+				</span>
+				.
+			</div>
+		);
+	}
+	return (
+		<div className="w-fit rounded-t-xl rounded-b-none border border-input border-b-0 bg-background px-4 py-1.5 text-center text-muted-foreground text-sm">
+			You have {remaining} message{remaining === 1 ? "" : "s"} remaining today!
+		</div>
 	);
 }

@@ -2,6 +2,10 @@ import fastifyCors from "@fastify/cors";
 import { randomUUID } from "crypto";
 import "dotenv/config";
 import Fastify from "fastify";
+import type { Redis } from "ioredis";
+import { getClientIp } from "./lib/clientIp";
+import { getRedis } from "./lib/redis";
+import { buildRateLimit, peekRateLimit } from "./middleware/rateLimit";
 import { runWritingWorkflow } from "./network";
 
 const baseCorsConfig = {
@@ -14,11 +18,63 @@ const baseCorsConfig = {
 
 const fastify = Fastify({
 	logger: true,
+	trustProxy: true,
 });
 
 fastify.register(fastifyCors, baseCorsConfig);
 
-fastify.post("/api/chat", async (request, reply) => {
+const rateLimitOptions = {
+	defaultLimit: Number.parseInt(process.env.RATE_LIMIT_DEFAULT || "10", 10),
+	windowSeconds: Number.parseInt(
+		process.env.RATE_LIMIT_WINDOW_SECONDS || "86400",
+		10,
+	),
+	bypassDefaultLimit: Number.parseInt(
+		process.env.RATE_LIMIT_BYPASS_DEFAULT_LIMIT || "200",
+		10,
+	),
+};
+
+const rateLimit = buildRateLimit(rateLimitOptions);
+
+fastify.get("/api/chat/quota", async (request, reply) => {
+	let redis: Redis;
+	try {
+		redis = getRedis();
+	} catch (error) {
+		request.log.error(
+			{ err: error },
+			"quota route: REDIS_URL missing, failing closed",
+		);
+		return reply.status(503).send({
+			error: "rate_limit_unavailable",
+			message:
+				"Rate limiting is temporarily unavailable. Please retry shortly.",
+		});
+	}
+
+	const ip = getClientIp(request);
+	try {
+		const info = await peekRateLimit(redis, ip, rateLimitOptions);
+		reply.header("X-RateLimit-Limit", String(info.limit));
+		reply.header("X-RateLimit-Remaining", String(info.remaining));
+		reply.header("X-RateLimit-Reset", String(Math.floor(info.resetAt / 1000)));
+		return reply.send({
+			limit: info.limit,
+			remaining: info.remaining,
+			resetAt: new Date(info.resetAt).toISOString(),
+		});
+	} catch (error) {
+		request.log.error({ err: error, ip }, "quota route: redis error");
+		return reply.status(503).send({
+			error: "rate_limit_unavailable",
+			message:
+				"Rate limiting is temporarily unavailable. Please retry shortly.",
+		});
+	}
+});
+
+fastify.post("/api/chat", { preHandler: rateLimit }, async (request, reply) => {
 	try {
 		const { userPrompt, currentDocument } = request.body as {
 			userPrompt: string;
@@ -52,29 +108,33 @@ const streamQueue = new Map<
 	{ userPrompt: string; currentDocument?: string }
 >();
 
-fastify.post("/api/chat/stream/init", async (request, reply) => {
-	const { userPrompt, currentDocument } = request.body as {
-		userPrompt: string;
-		currentDocument?: string;
-	};
-	if (!userPrompt) {
-		return reply.status(400).send({ error: "userPrompt is required" });
-	}
+fastify.post(
+	"/api/chat/stream/init",
+	{ preHandler: rateLimit },
+	async (request, reply) => {
+		const { userPrompt, currentDocument } = request.body as {
+			userPrompt: string;
+			currentDocument?: string;
+		};
+		if (!userPrompt) {
+			return reply.status(400).send({ error: "userPrompt is required" });
+		}
 
-	const streamId = randomUUID();
-	streamQueue.set(streamId, { userPrompt, currentDocument });
-	fastify.log.info(
-		{
-			route: "/api/chat/stream/init",
-			streamId,
-			promptLength: userPrompt.length,
-			hasCurrentDocument: Boolean(currentDocument),
-			queueSize: streamQueue.size,
-		},
-		"chat stream initialized",
-	);
-	return reply.send({ streamId });
-});
+		const streamId = randomUUID();
+		streamQueue.set(streamId, { userPrompt, currentDocument });
+		fastify.log.info(
+			{
+				route: "/api/chat/stream/init",
+				streamId,
+				promptLength: userPrompt.length,
+				hasCurrentDocument: Boolean(currentDocument),
+				queueSize: streamQueue.size,
+			},
+			"chat stream initialized",
+		);
+		return reply.send({ streamId });
+	},
+);
 
 fastify.get("/api/chat/stream", async (request, reply) => {
 	const { streamId } = request.query as { streamId?: string };

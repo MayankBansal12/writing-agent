@@ -1,28 +1,28 @@
 {
-	"name": "ai-writing-agent",
-	"private": true,
-	"type": "module",
-	"workspaces": [
-		"apps/*",
-		"packages/*"
-	],
-	"scripts": {
-		"check": "biome check --write .",
-		"dev": "pnpm -r dev",
-		"build": "pnpm -r build",
-		"build:web": "pnpm --filter web build",
-		"build:server": "pnpm --filter server build",
-		"check-types": "pnpm -r check-types",
-		"dev:web": "pnpm --filter web dev",
-		"dev:server": "pnpm --filter server dev"
-	},
-	"dependencies": {
-		"dotenv": "^17.2.2",
-		"zod": "^4.1.13"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.2.0",
-		"@types/bun": "^1.2.6"
-	},
-	"packageManager": "pnpm@10.10.0"
+  "name": "ai-writing-agent",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "biome check --write .",
+    "dev": "pnpm -r dev",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter web build",
+    "build:server": "pnpm --filter server build",
+    "check-types": "pnpm -r check-types",
+    "dev:web": "pnpm --filter web dev",
+    "dev:server": "pnpm --filter server dev"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/bun": "^1.2.6"
+  },
+  "packageManager": "pnpm@10.10.0"
 }
